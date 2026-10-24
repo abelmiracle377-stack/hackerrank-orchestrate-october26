@@ -1,0 +1,43 @@
+name: Validate deletion audit baseline
+on:
+  push:
+    branches: [ghost-data-solution]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate output
+        run: python code/main.py
+      - name: Validate output contract
+        run: |
+          python - <<'PY'
+          import csv, json
+          from pathlib import Path
+          req=list(csv.DictReader(open("dataset/deletion_requests.csv", encoding="utf-8-sig", newline="")))
+          out=list(csv.DictReader(open("output.csv", encoding="utf-8-sig", newline="")))
+          assert len(out)==len(req)==518, (len(out), len(req))
+          assert [r["case_id"] for r in out] == sorted(r["case_id"] for r in out)
+          assert len({r["case_id"] for r in out}) == len(out)
+          for r in out:
+              assert r["deletion_status"] in {"COMPLETE","INCOMPLETE","NOT_APPLICABLE"}
+              steps=json.loads(r["steps_json"])
+              assert isinstance(steps,list)
+              if r["deletion_status"]=="NOT_APPLICABLE": assert steps==[]
+              for i,s in enumerate(steps,1):
+                  assert set(s)=={"step_no","phase","system_id","resource_id","operation","state","evidence_id"}
+                  assert s["step_no"]==i
+          print("Output contract valid for",len(out),"cases")
+          PY
+      - name: Upload generated output
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-data-output
+          path: output.csv
