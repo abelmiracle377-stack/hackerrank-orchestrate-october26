@@ -89,6 +89,48 @@ def main():
         findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
        else:
         findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+  # Parse nested records in structured JSON snapshots. Each snapshot has its own
+  # capture timestamp, system, collection and records; use the snapshot timestamp
+  # rather than the bundle export timestamp for the audit cutoff.
+  for fid,captured,txt,suffix in evid:
+   if suffix != ".json": continue
+   try: payload=json.loads(txt)
+   except (ValueError,TypeError): continue
+   snapshots=payload.get("snapshots",[]) if isinstance(payload,dict) else []
+   for snap in snapshots:
+    snap_time=str(snap.get("captured_at",captured) or captured)
+    if cutoff and snap_time and snap_time>cutoff: continue
+    sys=str(snap.get("data_store","unknown"))
+    collection=n(snap.get("collection",""))
+    for rec in snap.get("records",[]):
+     if not isinstance(rec,dict): continue
+     flat=json.dumps(rec,ensure_ascii=False,sort_keys=True).casefold()
+     if not any(v in flat for v in identifiers): continue
+     res=str(rec.get("resource_id","unknown"))
+     # Match only a positive identifier-bearing record; unrelated aggregate
+     # rows with null identifiers must not be treated as a user's data.
+     direct_fields=("email","phone","email_hash","full_name","name","customer_reference","user_id","customer_id")
+     direct_values=[n(rec.get(k)) for k in direct_fields if rec.get(k) not in (None,"")]
+     if not any(v in identifiers for v in direct_values): continue
+     category=collection
+     if any(x in category for x in ("security_audit","audit_ledger")):
+      continue  # policy-retained audit evidence is not a deletion target
+     if "analytics" in category or "telemetry" in category:
+      findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
+      remediation.append(step("REMEDIATION",sys,res,"ANONYMIZE_RECORD","ANONYMIZED"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+     elif "support" in category or "message" in category:
+      findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
+      remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
+     elif "tombstone" in category:
+      findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
+      remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
+     else:
+      findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
+      remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
   # Deduplicate exact observations and planned actions.
   def dedup(xs):
    d={}
