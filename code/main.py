@@ -101,7 +101,6 @@ def main(request_path=None, output_path=None):
      try: db.execute(q)
      except sqlite3.DatabaseError: pass
    for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'"):
-    if not any(x in n(table) for x in ("account","profile","identity")): continue
     cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
     for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
      vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
@@ -114,6 +113,8 @@ def main(request_path=None, output_path=None):
       except (ValueError,TypeError):pass
      res=vals.get("resource_id") or vals.get("record_id") or nested.get("resource_id")
      ref=vals.get("user_id") or vals.get("customer_reference") or vals.get("subject_reference") or nested.get("user_id") or nested.get("customer_reference") or nested.get("subject_reference")
+     category=n(vals.get("collection_name") or vals.get("category") or vals.get("data_category") or nested.get("collection") or nested.get("category") or table)
+     if not any(x in category or x in n(table) for x in ("account","profile","identity")):continue
      if res and ref and n(ref).startswith("user_"):resource_map.setdefault(n(ref),set()).add(str(res))
   finally:db.close()
  out=[]
