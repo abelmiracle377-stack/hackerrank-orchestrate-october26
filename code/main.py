@@ -256,13 +256,29 @@ def main(request_path=None, output_path=None):
      direct_values=list(scalar_values(rec))
      if not any(v and v in identifiers for v in direct_values): continue
      category=collection
-     if any(x in category for x in ("security_audit","audit_ledger")):
-      continue  # policy-retained audit evidence is not a deletion target
-     if "analytics" in category or "telemetry" in category:
+     if any(x in category for x in ("security_audit","audit_ledger","legal_hold")):
+      continue
+     state_text=" ".join(n(rec.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+     if any(x in category for x in ("backup","archive")):
+      if any(x in state_text for x in ("blocked","expired","disabled","not_restorable")): continue
+      findings.append(step("FINDING",sys,res,"REPORT_RESTORE_RISK","ACTIVE",fid))
+      remediation.append(step("REMEDIATION",sys,res,"BLOCK_RESTORE","BLOCKED"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+     elif any(x in category for x in ("integration","connector","data_flow","sync")):
+      if any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")): continue
+      findings.append(step("FINDING",sys,res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
+      remediation.append(step("REMEDIATION",sys,res,"DISABLE_DATA_FLOW","DISABLED"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+     elif "analytics" in category or "telemetry" in category:
       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"ANONYMIZE_RECORD","ANONYMIZED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+     elif "support_attachment" in category or "attachment" in category:
+      findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
+      remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
+      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
      elif "support" in category or "message" in category:
+      if "redacted" in state_text and not any(n(rec.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")): continue
       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
@@ -274,6 +290,54 @@ def main(request_path=None, output_path=None):
       findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+  # Parse top-level JSON evidence exports (for example export jobs and connector
+  # configurations) whose records are not wrapped in a snapshots array.
+  for fid,captured,txt,suffix in evid:
+   if suffix!=".json" or (cutoff and captured and captured>cutoff): continue
+   try: payload=json.loads(txt)
+   except (ValueError,TypeError): continue
+   if not isinstance(payload,dict) or "snapshots" in payload: continue
+   basecat=n(payload.get("collection",""))
+   source=n(payload.get("source",""))
+   def walk_records(obj, inherited):
+    if isinstance(obj,dict):
+     resource=obj.get("resource_id") or obj.get("record_id") or obj.get("id")
+     flat=[]
+     def gather(v):
+      if isinstance(v,dict):
+       for z in v.values(): gather(z)
+      elif isinstance(v,list):
+       for z in v: gather(z)
+      elif v is not None: flat.append(n(v))
+     gather(obj)
+     if resource and any(v and v in identifiers for v in flat):
+      category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
+      res=str(resource)
+      state_text=" ".join(n(obj.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+      if any(x in category for x in ("security_audit","audit_ledger","legal_hold")): pass
+      elif any(x in category for x in ("backup","archive")):
+       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
+        findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid)); remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED")); verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+      elif any(x in category for x in ("integration","connector","data_flow","sync")):
+       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
+        findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid)); remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED")); verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+      elif "analytics" in category or "telemetry" in category:
+       findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED")); verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+      elif "support_attachment" in category or "attachment" in category:
+       findings.append(step("FINDING","support_platform",res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_ABSENT","ABSENT"))
+      elif "support" in category or "message" in category:
+       findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+      elif "tombstone" in category:
+       if any(n(obj.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")):
+        findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+      elif any(x in category for x in ("export","profile","search","marketing","user_data")):
+       system="export_service" if "export" in category else "search_service" if "search" in category else "marketing_platform" if "marketing" in category else "account_service"
+       findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+     for k,v in obj.items():
+      if isinstance(v,(dict,list)): walk_records(v,n(k) or inherited)
+    elif isinstance(obj,list):
+     for v in obj: walk_records(v,inherited)
+   walk_records(payload,basecat)
   # Deduplicate exact observations and planned actions.
   def dedup(xs):
    d={}
