@@ -256,16 +256,16 @@ def main(request_path=None, output_path=None):
      direct_values=list(scalar_values(rec))
      if not any(v and v in identifiers for v in direct_values): continue
      category=collection
-     if any(x in category for x in ("security_audit","audit_ledger","legal_hold")):
+     if any(x in category for x in ("security","audit","legal_hold")):
       continue
      state_text=" ".join(str(rec.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
      if any(x in category for x in ("backup","archive")):
-      if any(x in state_text for x in ("blocked","expired","disabled","not_restorable")): continue
+      if any(x in state_text for x in ("blocked","expired","disabled","not_restorable","false","0","stopped")): continue
       findings.append(step("FINDING",sys,res,"REPORT_RESTORE_RISK","ACTIVE",fid))
       remediation.append(step("REMEDIATION",sys,res,"BLOCK_RESTORE","BLOCKED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
      elif any(x in category for x in ("integration","connector","data_flow","sync")):
-      if any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")): continue
+      if any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed","false","0","stopped")): continue
       findings.append(step("FINDING",sys,res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
       remediation.append(step("REMEDIATION",sys,res,"DISABLE_DATA_FLOW","DISABLED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
@@ -316,7 +316,7 @@ def main(request_path=None, output_path=None):
       category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
       res=str(resource)
       state_text=" ".join(str(obj.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
-      if any(x in category for x in ("security_audit","audit_ledger","legal_hold")): pass
+      if any(x in category for x in ("security","audit","legal_hold")): pass
       elif any(x in category for x in ("backup","archive")):
        if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
         findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid)); remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED")); verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
