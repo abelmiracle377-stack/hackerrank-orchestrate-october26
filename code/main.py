@@ -106,14 +106,18 @@ def main(request_path=None, output_path=None):
       res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
       if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
       state_text=" ".join(n(vals.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
-      if ("backup" in tab or "archive" in tab) and not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
-       findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
-       remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
-       verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
-      elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")) and not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
-       findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
-       remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
-       verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+      if "backup" in tab or "archive" in tab:
+       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
+        findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
+        remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
+        verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+       continue
+      elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")):
+       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
+        findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
+        remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
+        verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+       continue
       elif "analytics" in tab or "telemetry" in tab:
        findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
        remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
