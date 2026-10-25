@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evidence-driven deletion audit baseline. Run: python code/main.py"""
-import argparse,csv,json,re
+import argparse,csv,json,re,sqlite3
 from pathlib import Path
 from collections import defaultdict
 ROOT=Path(__file__).resolve().parents[1]; DATA=ROOT/"dataset"; OUT=ROOT/"output.csv"
@@ -81,6 +81,57 @@ def main(request_path=None, output_path=None):
         findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
        else:
         findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+  # Execute only CREATE TABLE and INSERT statements from participant-provided
+  # SQLite-compatible snapshots in an isolated in-memory database.
+  for fid,captured,txt,suffix in evid:
+   if suffix != ".sql": continue
+   if cutoff and captured and captured>cutoff: continue
+   db=sqlite3.connect(":memory:")
+   try:
+    for statement in txt.split(";"):
+     q=statement.strip()
+     if re.match(r"(?is)^CREATE\\s+TABLE\\b",q) or re.match(r"(?is)^INSERT\\s+INTO\\b",q):
+      try: db.execute(q)
+      except sqlite3.DatabaseError: pass
+    tables=[x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    for table in tables:
+     cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
+     for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
+      vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
+      scalars=[n(v) for v in vals.values() if v is not None]
+      if not any(v and v in identifiers for v in scalars): continue
+      tab=n(table)
+      res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
+      if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
+      if "backup" in tab or "archive" in tab:
+       findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
+       remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
+       verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+      elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")):
+       findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
+       remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
+       verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+      elif "analytics" in tab or "telemetry" in tab:
+       findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+       remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
+       verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+      elif "support" in tab or "email_delivery" in tab:
+       findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+       remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED"))
+       verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+      elif "tombstone" in tab:
+       direct=[n(vals.get(k)) for k in ("full_name","name","email","phone","email_hash") if vals.get(k)]
+       if direct:
+        findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+        remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED"))
+        verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+      else:
+       system="search_service" if "search" in tab or "index" in tab else "account_service" if "profile" in tab or "account" in tab else "data_store"
+       findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
+       remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
+       verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+   finally:
+    db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
   # capture timestamp, system, collection and records; use the snapshot timestamp
   # rather than the bundle export timestamp for the audit cutoff.
