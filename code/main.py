@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evidence-driven deletion audit baseline. Run: python code/main.py"""
-import csv,json,re
+import argparse,csv,json,re
 from pathlib import Path
 from collections import defaultdict
 ROOT=Path(__file__).resolve().parents[1]; DATA=ROOT/"dataset"; OUT=ROOT/"output.csv"
@@ -16,10 +16,15 @@ def ordered(ss):
  return ss
 def deletion(r):
  t=n(r.get("request_text"))
- if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account","cancel my deletion")):return False
- return bool(re.search(r"\b(delete|deletion|erase|erasure|remove my account|close my account|close this account|permanent account|exclus[aã]o|supprim|eliminar|borrar)\b",t))
-def main():
- req=read(DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
+ if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account","cancel my deletion","do not erase","don't erase")):return False
+ patterns=(
+  r"\b(delete|deletion|erase|erasure|remove my account|remove my profile|remove my personal|remove my name|close my account|close this account|permanent account|personal-data deletion|delete my data)\b",
+  r"\b(exclus[aã]o|supprim\w*|eliminar|borrar|eliminaci[oó]n|effacer|l[oö]schen|entfernen)\b",
+  r"削除|消去|消して|アカウントの削除|삭제|지워|삭제해|删除|刪除|删除账户|刪除帳戶"
+ )
+ return any(re.search(p,t) for p in patterns)
+def main(request_path=None, output_path=None):
+ req=read(request_path or DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
  identity_by_email={n(u.get("email")):u for u in ids if u.get("email")}
  evid=[]
  for m in manifest:
@@ -49,21 +54,8 @@ def main():
       if v and v not in identifiers:identifiers.add(v);changed=True
   identifiers={x for x in identifiers if len(x)>2}
   findings=[]; remediation=[]; verification=[]
-  # Current activity uses event_time/event_type/source_system/target_system/resource_id/reported_result.
-  for a in acts:
-   if cutoff and a.get("event_time","")>cutoff:continue
-   hay=" ".join(n(a.get(k)) for k in ("resource_id","details","source_system","target_system"))
-   if not any(v in hay for v in identifiers):continue
-   typ=n(a.get("event_type")); result=n(a.get("reported_result")); src=a.get("source_system","unknown"); dst=a.get("target_system","unknown"); res=a.get("resource_id","unknown"); aid=a.get("activity_id","")
-   if typ in {"SYNC_RECORD","INDEX_RECORD","REFRESH_CACHE","CREATE_EXPORT","RESTORE_BACKUP","IMPORT_RECORD"} and result not in {"failed","failure"}:
-    sys=dst if typ in {"SYNC_RECORD","INDEX_RECORD","REFRESH_CACHE"} else src
-    findings.append(step("FINDING",sys,res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",aid))
-    remediation.append(step("REMEDIATION",sys,res,"DISABLE_DATA_FLOW","DISABLED"))
-    verification.append(step("VERIFICATION",sys,res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
-   if typ in {"RESTORE_BACKUP","RESTORE_RECORD"} and result not in {"failed","failure"}:
-    findings.append(step("FINDING",src,res,"REPORT_RESTORE_RISK","ACTIVE",aid))
-    remediation.append(step("REMEDIATION",src,res,"BLOCK_RESTORE","BLOCKED"))
-    verification.append(step("VERIFICATION",src,res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+  # system_activity.csv records reported operations, not verified resulting state.
+  # Avoid treating those claims as proof of a remaining record or active flow.
   # Parse pipe-delimited operational handover records; these are explicit state observations.
   for fid,captured,txt,suffix in evid:
    if cutoff and captured and captured>cutoff:continue
@@ -107,11 +99,19 @@ def main():
      flat=json.dumps(rec,ensure_ascii=False,sort_keys=True).casefold()
      if not any(v in flat for v in identifiers): continue
      res=str(rec.get("resource_id","unknown"))
-     # Match only a positive identifier-bearing record; unrelated aggregate
-     # rows with null identifiers must not be treated as a user's data.
-     direct_fields=("email","phone","email_hash","full_name","name","customer_reference","user_id","customer_id")
-     direct_values=[n(rec.get(k)) for k in direct_fields if rec.get(k) not in (None,"")]
-     if not any(v in identifiers for v in direct_values): continue
+     # Inspect nested documents as well as top-level fields, but only treat
+     # a record as subject-linked when a scalar identifier matches the case.
+     def scalar_values(obj):
+      if isinstance(obj,dict):
+       for value in obj.values():
+        yield from scalar_values(value)
+      elif isinstance(obj,list):
+       for value in obj:
+        yield from scalar_values(value)
+      elif obj is not None:
+       yield n(obj)
+     direct_values=list(scalar_values(rec))
+     if not any(v and v in identifiers for v in direct_values): continue
      category=collection
      if any(x in category for x in ("security_audit","audit_ledger")):
       continue  # policy-retained audit evidence is not a deletion target
@@ -138,16 +138,20 @@ def main():
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # Absence cannot be inferred from workflow status; flag the account check as unresolved.
-   res="account_"+(next(iter(uids)).replace("user_","") if uids else cid.removeprefix("case_"))
-   findings=[step("FINDING","account_service",res,"REPORT_REMAINING_RECORD","PRESENT","")]
-   remediation=[step("REMEDIATION","account_service",res,"DELETE_RECORD","ABSENT")]
-   verification=[step("VERIFICATION","account_service",res,"VERIFY_RECORD_ABSENT","ABSENT")]
+   # No direct evidence was found. Do not fabricate a resource, state, or citation.
+   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
  out.sort(key=lambda x:x["case_id"])
- with OUT.open("w",encoding="utf-8",newline="") as f:
+ output_path=Path(output_path) if output_path else OUT
+ with output_path.open("w",encoding="utf-8",newline="") as f:
   w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"]);w.writeheader();w.writerows(out)
  assert len(out)==len(req) and len({x["case_id"] for x in out})==len(req)
- print(f"Wrote {len(out)} rows to {OUT}")
-if __name__=="__main__":main()
+ print(f"Wrote {len(out)} rows to {output_path}")
+if __name__=="__main__":
+ parser=argparse.ArgumentParser()
+ parser.add_argument("--requests",type=Path,default=DATA/"deletion_requests.csv")
+ parser.add_argument("--output",type=Path,default=OUT)
+ args=parser.parse_args()
+ main(args.requests,args.output)
