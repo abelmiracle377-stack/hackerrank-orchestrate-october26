@@ -43,6 +43,7 @@ jobs:
                   assert set(s)=={"step_no","phase","system_id","resource_id","operation","state","evidence_id"}
                   assert s["operation"] in allowed and s["state"]==allowed[s["operation"]]
                   if s["phase"]=="FINDING": assert s["evidence_id"] in ev
+                  elif r["deletion_status"]=="COMPLETE": assert s["phase"]=="VERIFICATION" and s["evidence_id"] in ev
                   else: assert s["evidence_id"]==""
           print("Output contract valid for",len(out),"cases")
           PY
