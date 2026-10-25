@@ -334,7 +334,12 @@ def main(request_path=None, output_path=None):
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
      elif "support" in category or "message" in category:
       if any("[redacted]" in n(rec.get(k)) for k in ("message_text","message_excerpt","body","content")): continue
-      if "redacted" in state_text and not any(n(rec.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")): continue
+      direct_keys=("email","phone","email_hash","full_name","name","requester_email","requester_phone","requester_name")
+      direct_pii=any(n(rec.get(k)) in identifiers for k in direct_keys if rec.get(k))
+      excerpt=" ".join(n(rec.get(k)) for k in ("message_text","message_excerpt","body","content") if rec.get(k))
+      direct_pii=direct_pii or any(contains_id(excerpt,ident) for ident in identifiers)
+      if not direct_pii: continue
+      if "redacted" in state_text and not any(n(rec.get(k)) in identifiers for k in direct_keys): continue
       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
@@ -390,7 +395,12 @@ def main(request_path=None, output_path=None):
       elif "support" in category or "message" in category:
        if any("[redacted]" in n(obj.get(k)) for k in ("message_text","message_excerpt","body","content")): pass
        else:
-        findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+        direct_keys=("email","phone","email_hash","full_name","name","requester_email","requester_phone","requester_name")
+        direct_pii=any(n(obj.get(k)) in identifiers for k in direct_keys if obj.get(k))
+        excerpt=" ".join(n(obj.get(k)) for k in ("message_text","message_excerpt","body","content") if obj.get(k))
+        direct_pii=direct_pii or any(contains_id(excerpt,ident) for ident in identifiers)
+        if direct_pii:
+         findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
       elif "tombstone" in category or res.startswith("tombstone_"):
        if any(n(obj.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")):
         findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
