@@ -142,6 +142,11 @@ def main(request_path=None, output_path=None):
      findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
      remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
      verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+   elif "tombstone" in pth or res.startswith("tombstone_"):
+    if any(x in context for x in ("@","email_hash","phone:")) and "[redacted]" not in context:
+     findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+     remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED"))
+     verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
    elif any(x in pth for x in ("integration","connector")) or res.startswith(("data_flow_","integration_")):
     if any(x in context for x in ("active","enabled","connected","sync","synchronization")):
      findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
@@ -236,7 +241,7 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
        remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED"))
        verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
-      elif "tombstone" in tab:
+      elif "tombstone" in tab or res.startswith("tombstone_"):
        direct=[n(vals.get(k)) for k in ("full_name","name","email","phone","email_hash") if vals.get(k)]
        if direct:
         findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid))
@@ -318,10 +323,12 @@ def main(request_path=None, output_path=None):
       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
-     elif "tombstone" in category:
-      findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
-      remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
-      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
+     elif "tombstone" in category or res.startswith("tombstone_"):
+      direct=[n(rec.get(k)) for k in ("full_name","name","email","phone","email_hash") if rec.get(k)]
+      if direct:
+       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
+       remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
+       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_REDACTED","REDACTED"))
      else:
       findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
@@ -366,7 +373,7 @@ def main(request_path=None, output_path=None):
        if any("[redacted]" in n(obj.get(k)) for k in ("message_text","message_excerpt","body","content")): pass
        else:
         findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
-      elif "tombstone" in category:
+      elif "tombstone" in category or res.startswith("tombstone_"):
        if any(n(obj.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")):
         findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
       elif any(x in category for x in ("export","profile","search","marketing","user_data")):
