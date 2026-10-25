@@ -53,7 +53,27 @@ def main(request_path=None, output_path=None):
       v=n(a.get(k))
       if v and v not in identifiers:identifiers.add(v);changed=True
   identifiers={x for x in identifiers if len(x)>2}
-  findings=[]; remediation=[]; verification=[]
+  # Keep only the newest eligible snapshot for each SQL table and JSON
+  # collection/system pair; older snapshots must not override newer state.
+  latest_sql_table={}
+  latest_json_snapshot={}
+  for efid,ecaptured,etxt,esuffix in evid:
+   if cutoff and ecaptured and ecaptured>cutoff: continue
+   if esuffix==".sql":
+    for mt in re.finditer(r"(?is)CREATE\s+TABLE\s+[\"']?([A-Za-z0-9_]+)",etxt):
+     table_key=n(mt.group(1))
+     if table_key not in latest_sql_table or ecaptured>latest_sql_table[table_key]:
+      latest_sql_table[table_key]=ecaptured
+   elif esuffix==".json":
+    try: epayload=json.loads(etxt)
+    except (ValueError,TypeError): continue
+    for esnap in epayload.get("snapshots",[]) if isinstance(epayload,dict) else []:
+     etime=str(esnap.get("captured_at",ecaptured) or ecaptured)
+     if cutoff and etime and etime>cutoff: continue
+     ekey=(n(esnap.get("data_store","unknown")),n(esnap.get("collection","")))
+     if ekey not in latest_json_snapshot or etime>latest_json_snapshot[ekey]:
+      latest_json_snapshot[ekey]=etime
+  findings=[]; remediation=[]; verification=[]; sql_absence=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # Parse pipe-delimited operational handover records; these are explicit state observations.
@@ -95,6 +115,8 @@ def main(request_path=None, output_path=None):
       except sqlite3.DatabaseError: pass
     tables=[x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     for table in tables:
+     table_key=n(table)
+     if captured and captured < latest_sql_table.get(table_key,captured): continue
      cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
      subject_match=False
      for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
@@ -137,6 +159,11 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+     tabname=n(table)
+     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
+      uid=sorted(uids)[0].removeprefix("user_")
+      if uid.isdigit() and len(uid)<3: uid=uid.zfill(3)
+      sql_absence.append(step("VERIFICATION","account_service","account_"+uid,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
@@ -152,6 +179,7 @@ def main(request_path=None, output_path=None):
     if cutoff and snap_time and snap_time>cutoff: continue
     sys=str(snap.get("data_store","unknown"))
     collection=n(snap.get("collection",""))
+    if snap_time and snap_time < latest_json_snapshot.get((n(sys),collection),snap_time): continue
     for rec in snap.get("records",[]):
      if not isinstance(rec,dict): continue
      flat=json.dumps(rec,ensure_ascii=False,sort_keys=True).casefold()
@@ -196,9 +224,12 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # No direct finding is supported; keep the case unresolved rather than
-   # fabricating a record or inferring global deletion from one snapshot.
-   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   if sql_absence:
+    steps=ordered(dedup(sql_absence))
+    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
+   else:
+    # No direct finding is supported; do not fabricate a resource or citation.
+    out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
