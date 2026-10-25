@@ -17,6 +17,7 @@ def contains_id(text, identifier):
  if identifier in text:
   return re.search(token_pattern,text) is not None
  digits=re.sub(r"\D","",identifier)
+ # Legacy heuristic: the 8-digit threshold is not empirically justified in the recovered design history.
  if len(digits)>=8 and sum(ch.isdigit() for ch in identifier)>=8 and not re.fullmatch(r"[0-9a-f]{32,}",identifier):
   normalized_digits=re.sub(r"\D","",text)
   if digits not in normalized_digits:return False
@@ -150,6 +151,8 @@ def main(request_path=None, output_path=None):
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
   if not deletion(r):out.append({"case_id":cid,"deletion_status":"NOT_APPLICABLE","steps_json":"[]"});continue
   # Build transitive identifier closure from current identity and historical field changes.
+  # Caution: closure discovers candidate associations; shared/reused identifiers
+  # are not sufficient proof that two records belong to the same person.
   user=identity_by_email.get(email); uids={n(user.get("user_id"))} if user else set(); identifiers={email}
   if user:
    identifiers.update(n(user.get(k)) for k in ("user_id","name","phone","email_hash") if user.get(k))
