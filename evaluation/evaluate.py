@@ -48,6 +48,15 @@ for name,r,e in custom: report+=f"- {name}: {'PASS' if deletion(r)==e else 'FAIL
 report+=f"""
 - Synthetic decision checks passed: {custom_pass}/{len(custom)}.
 
+## Status mismatch diagnostics
+
+"""
+for cid in mismatch_ids:
+ a=json.loads(T[cid]["steps_json"]); b=json.loads(P[cid]["steps_json"])
+ preview="; ".join(f"{x.get('phase')}:{x.get('system_id')}/{x.get('resource_id')}:{x.get('operation')}[{x.get('evidence_id','')}]" for x in b[:8]) or "(no predicted steps)"
+ report+=f"- {cid}: expected {T[cid]['deletion_status']}, predicted {P[cid]['deletion_status']}; expected steps={len(a)}, predicted steps={len(b)}; predicted preview: {preview}.\\n"
+
+report+="""
 ## Failures found and improvements made
 
 The evaluator compares predictions with public sample outputs. The parser checks nested JSON values, parses SQLite-compatible SQL snapshots, recognizes deletion requests in several represented languages, and avoids fabricating resource IDs or evidence citations when no direct finding is supported. Known gaps remain in PDF/image interpretation and proving absence across every relevant data store. CI contract success is not proof of hidden-case accuracy.
