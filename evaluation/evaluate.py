@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Compare generated predictions with public samples and run synthetic request checks."""
 import csv,json,sys,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -12,7 +11,7 @@ with tempfile.TemporaryDirectory() as td:
  out=Path(td)/"sample.csv"
  main(ROOT/"dataset"/"sample_deletion_requests.csv",out)
  pred=rows(out)
-T={r["case_id"]:r for r in truth};P={r["case_id"]:r for r in pred}; ids=sorted(T.keys() & P.keys())
+T={r["case_id"]:r for r in truth};P={r["case_id"]:r for r in pred};ids=sorted(T.keys() & P.keys())
 sc=sum(T[i]["deletion_status"]==P[i]["deletion_status"] for i in ids)
 seq=0;step_total=step_correct=field_total=field_correct=0
 for cid in ids:
@@ -26,7 +25,7 @@ custom=[
  ("English profile and contact deletion",{"request_text":"Please delete my profile and remove my name and contact details."},True),
  ("Japanese deletion request",{"request_text":"このアカウントの完全な削除を依頼します。"},True),
  ("Korean deletion request",{"request_text":"계정을 삭제해 주세요."},True)]
-custom_pass=sum(deletion(r)==expected for _,r,expected in custom)
+custom_pass=sum(deletion(r)==e for _,r,e in custom)
 (ROOT/"evaluation").mkdir(exist_ok=True)
 report=f"""# Evaluation Report
 
@@ -34,23 +33,22 @@ report=f"""# Evaluation Report
 
 - Public sample cases compared: {len(ids)} of {len(truth)}.
 - Deletion-status accuracy: {sc}/{len(ids)} ({sc/len(ids)*100 if ids else 0:.2f}%).
-- Step-level exact accuracy at paired positions (extra/missing steps count in denominator): {step_correct}/{step_total} ({step_correct/step_total*100 if step_total else 0:.2f}%).
+- Step-level exact accuracy at paired positions: {step_correct}/{step_total} ({step_correct/step_total*100 if step_total else 0:.2f}%).
 - Field-level accuracy at paired step positions: {field_correct}/{field_total} ({field_correct/field_total*100 if field_total else 0:.2f}%).
 - Exact sequence accuracy: {seq}/{len(ids)} ({seq/len(ids)*100 if ids else 0:.2f}%).
 
-Status mismatches (case_id: expected -> predicted): {', '.join(f'{i}:{T[i][\"deletion_status\"]}->{P[i][\"deletion_status\"]}' for i in ids if T[i][\"deletion_status\"]!=P[i][\"deletion_status\"])}.\n\nThese public-sample metrics are not estimates of hidden-set accuracy.
+These public-sample metrics are not estimates of hidden-set accuracy.
 
 ## Participant-created additional cases
 
 """
-for name,r,expected in custom:
- report+=f"- {name}: {'PASS' if deletion(r)==expected else 'FAIL'} (expected deletion={expected}).\n"
+for name,r,e in custom: report+=f"- {name}: {'PASS' if deletion(r)==e else 'FAIL'} (expected deletion={e}).\n"
 report+=f"""
 - Synthetic decision checks passed: {custom_pass}/{len(custom)}.
 
 ## Failures found and improvements made
 
-The evaluator compares predictions with the public sample rather than assuming correctness. The parser now checks nested JSON values, recognizes deletion requests in several represented languages, and avoids fabricating resource IDs or evidence citations when no direct finding is supported. Known gaps remain in PDF/image/SQLite interpretation and proving absence across every relevant data store. CI contract success must not be confused with hidden-case accuracy.
+The evaluator compares predictions with public sample outputs. The parser checks nested JSON values, parses SQLite-compatible SQL snapshots, recognizes deletion requests in several represented languages, and avoids fabricating resource IDs or evidence citations when no direct finding is supported. Known gaps remain in PDF/image interpretation and proving absence across every relevant data store. CI contract success is not proof of hidden-case accuracy.
 """
 (ROOT/"evaluation"/"evaluation_report.md").write_text(report,encoding="utf-8")
 print(report)
