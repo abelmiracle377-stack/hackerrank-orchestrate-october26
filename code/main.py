@@ -218,6 +218,53 @@ def main(request_path=None, output_path=None):
     rm=re.search(r"(?i)resource_id=([a-z0-9_-]+)",line)
     if rm:
      verified_absence.append(step("VERIFICATION","account_service",rm.group(1),"VERIFY_RECORD_ABSENT","ABSENT",fid))
+  # Correlate structured service-log events by trace ID so a subject key on
+  # the start event can be linked to a resource/state on its completion event.
+  for fid,captured,txt,suffix in evid:
+   if suffix!=".log" or (cutoff and captured and captured>cutoff): continue
+   trace_groups={}
+   for line_no,line in enumerate(txt.splitlines()):
+    tm=re.search(r"(?i)trace_id=([a-z0-9_-]+)",line)
+    key=tm.group(1) if tm else "line_"+str(line_no)
+    trace_groups.setdefault(key,[]).append(line)
+   for group_lines in trace_groups.values():
+    joined="\\n".join(group_lines)
+    if not any(contains_id(joined,v) for v in identifiers): continue
+    resource_matches=[]
+    for line in group_lines:
+     rm=re.search(r"(?i)resource_id=([a-z0-9_-]+)",line)
+     if rm: resource_matches.append((rm.group(1),line.casefold()))
+    if not resource_matches: continue
+    resource,resource_line=resource_matches[-1]
+    low=joined.casefold()
+    service_match=re.search(r"(?i)service=([a-z0-9_-]+)",joined)
+    service=n(service_match.group(1)) if service_match else ""
+    if re.search(r"(?i)(?:rows=0|http_status=404|status_code=404)",low):
+     verified_absence.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT",fid))
+    elif ("backup" in service or resource.startswith("backup_")) and re.search(r"(?i)(?:eligible=true.*deletion_block=false|restore_allowed=true|restore_allowed=1)",low):
+     findings.append(step("FINDING","backup_service",resource,"REPORT_RESTORE_RISK","ACTIVE",fid))
+     remediation.append(step("REMEDIATION","backup_service",resource,"BLOCK_RESTORE","BLOCKED"))
+     verification.append(step("VERIFICATION","backup_service",resource,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+    elif ("integration" in service or resource.startswith(("data_flow_","integration_"))) and re.search(r"(?i)(?:enabled=true|scheduler_registered=true|connector_heartbeat)",low):
+     findings.append(step("FINDING","integration_service",resource,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
+     remediation.append(step("REMEDIATION","integration_service",resource,"DISABLE_DATA_FLOW","DISABLED"))
+     verification.append(step("VERIFICATION","integration_service",resource,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+    elif ("support" in service or resource.startswith(("support_","attachment_"))) and re.search(r"(?i)(?:message_pii_scan|attachment_pii_scan|detector=direct_identifier)",low):
+     findings.append(step("FINDING","support_platform",resource,"REPORT_EXPOSED_PII","PRESENT",fid))
+     remediation.append(step("REMEDIATION","support_platform",resource,"REDACT_RECORD","REDACTED"))
+     verification.append(step("VERIFICATION","support_platform",resource,"VERIFY_RECORD_REDACTED","REDACTED"))
+    elif ("search" in service or resource.startswith("search_")) and re.search(r"(?i)(?:index_query_completed.*result=hit|result=hit.*index_query_completed)",low):
+     findings.append(step("FINDING","search_service",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
+     remediation.append(step("REMEDIATION","search_service",resource,"DELETE_RECORD","ABSENT"))
+     verification.append(step("VERIFICATION","search_service",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
+    elif ("analytics" in service or resource.startswith("analytics_")) and re.search(r"(?i)(?:contact_lookup_completed.*rows=1|rows=1.*contact_lookup_completed)",low):
+     findings.append(step("FINDING","analytics_platform",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
+     remediation.append(step("REMEDIATION","analytics_platform",resource,"DELETE_RECORD","ABSENT"))
+     verification.append(step("VERIFICATION","analytics_platform",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
+    elif ("account" in service or resource.startswith("account_")) and re.search(r"(?i)(?:profile_lookup_completed.*rows=1|http_status=200)",low):
+     findings.append(step("FINDING","account_service",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
+     remediation.append(step("REMEDIATION","account_service",resource,"DELETE_RECORD","ABSENT"))
+     verification.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
   # Parse pipe-delimited operational handover records; these are explicit state observations.
   for fid,captured,txt,suffix in evid:
    if cutoff and captured and captured>cutoff:continue
