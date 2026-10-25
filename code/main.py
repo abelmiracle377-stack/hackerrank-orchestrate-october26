@@ -205,6 +205,16 @@ def main(request_path=None, output_path=None):
     findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
     remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
     verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+  # Parse explicit point-in-time readback logs. A 404/zero-row lookup is
+  # positive evidence of absence only when the subject identifier is in that line.
+  for fid,captured,txt,suffix in evid:
+   if suffix!=".log" or (cutoff and captured and captured>cutoff): continue
+   for line in txt.splitlines():
+    if not any(contains_id(line,v) for v in identifiers): continue
+    if not re.search(r"(?i)(?:rows=0|http_status=404|status_code=404)",line): continue
+    rm=re.search(r"(?i)resource_id=([a-z0-9_-]+)",line)
+    if rm:
+     verified_absence.append(step("VERIFICATION","account_service",rm.group(1),"VERIFY_RECORD_ABSENT","ABSENT",fid))
   # Parse pipe-delimited operational handover records; these are explicit state observations.
   for fid,captured,txt,suffix in evid:
    if cutoff and captured and captured>cutoff:continue
