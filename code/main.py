@@ -249,6 +249,10 @@ def main(request_path=None, output_path=None):
      findings.append(step("FINDING","integration_service",resource,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
      remediation.append(step("REMEDIATION","integration_service",resource,"DISABLE_DATA_FLOW","DISABLED"))
      verification.append(step("VERIFICATION","integration_service",resource,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+    elif ("support" in service or resource.startswith(("support_","attachment_"))) and re.search(r"(?i)(?:contact_query_completed.*rows=1|marker_found=false)",low):
+     findings.append(step("FINDING","support_platform",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
+     remediation.append(step("REMEDIATION","support_platform",resource,"DELETE_RECORD","ABSENT"))
+     verification.append(step("VERIFICATION","support_platform",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
     elif ("support" in service or resource.startswith(("support_","attachment_"))) and re.search(r"(?i)(?:message_pii_scan|attachment_pii_scan|detector=direct_identifier)",low):
      findings.append(step("FINDING","support_platform",resource,"REPORT_EXPOSED_PII","PRESENT",fid))
      remediation.append(step("REMEDIATION","support_platform",resource,"REDACT_RECORD","REDACTED"))
