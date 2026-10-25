@@ -148,6 +148,6 @@ def main():
  out.sort(key=lambda x:x["case_id"])
  with OUT.open("w",encoding="utf-8",newline="") as f:
   w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"]);w.writeheader();w.writerows(out)
- assert len(out)==518 and len({x["case_id"] for x in out})==518
+ assert len(out)==len(req) and len({x["case_id"] for x in out})==len(req)
  print(f"Wrote {len(out)} rows to {OUT}")
 if __name__=="__main__":main()

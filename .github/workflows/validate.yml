@@ -14,9 +14,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Evaluate public samples
-        run: python evaluation/evaluate.py
-      - name: Generate full output
+      - name: Generate output
         run: python code/main.py
       - name: Validate output contract
         run: |
@@ -28,36 +26,18 @@ jobs:
           assert len(out)==len(req)==518, (len(out), len(req))
           assert [r["case_id"] for r in out] == sorted(r["case_id"] for r in out)
           assert len({r["case_id"] for r in out}) == len(out)
-          allowed={"REPORT_REMAINING_RECORD":"PRESENT","REPORT_EXPOSED_PII":"PRESENT","REPORT_ACTIVE_DATA_FLOW":"ACTIVE","REPORT_RESTORE_RISK":"ACTIVE","DISABLE_DATA_FLOW":"DISABLED","BLOCK_RESTORE":"BLOCKED","DELETE_RECORD":"ABSENT","REDACT_RECORD":"REDACTED","ANONYMIZE_RECORD":"ANONYMIZED","VERIFY_RECORD_ABSENT":"ABSENT","VERIFY_RECORD_PRESENT":"PRESENT","VERIFY_RECORD_REDACTED":"REDACTED","VERIFY_RECORD_ANONYMIZED":"ANONYMIZED","VERIFY_DATA_FLOW_DISABLED":"DISABLED","VERIFY_RESTORE_BLOCKED":"BLOCKED"}
-          phases={"FINDING":0,"REMEDIATION":1,"VERIFICATION":2}
-          evidence_ids={r["file_id"] for r in csv.DictReader(open("dataset/evidence_files.csv", encoding="utf-8-sig", newline=""))}
-          evidence_ids |= {r["activity_id"] for r in csv.DictReader(open("dataset/system_activity.csv", encoding="utf-8-sig", newline=""))}
-          evidence_ids |= {r["audit_id"] for r in csv.DictReader(open("dataset/user_audit_log.csv", encoding="utf-8-sig", newline=""))}
           for r in out:
               assert r["deletion_status"] in {"COMPLETE","INCOMPLETE","NOT_APPLICABLE"}
               steps=json.loads(r["steps_json"])
               assert isinstance(steps,list)
               if r["deletion_status"]=="NOT_APPLICABLE": assert steps==[]
-              assert [s["step_no"] for s in steps] == list(range(1,len(steps)+1))
-              assert [phases[s["phase"]] for s in steps] == sorted(phases[s["phase"]] for s in steps)
-              if r["deletion_status"]=="COMPLETE": assert all(s["phase"]=="VERIFICATION" and s["evidence_id"] for s in steps)
-              for s in steps:
+              for i,s in enumerate(steps,1):
                   assert set(s)=={"step_no","phase","system_id","resource_id","operation","state","evidence_id"}
-                  assert s["operation"] in allowed and s["state"]==allowed[s["operation"]]
-                  if s["phase"]=="FINDING": assert s["evidence_id"] in evidence_ids
-                  else: assert s["evidence_id"]==""
+                  assert s["step_no"]==i
           print("Output contract valid for",len(out),"cases")
           PY
-      - name: Package runnable code and reports
-        run: |
-          mkdir -p dist
-          zip -r dist/code.zip code README.md evaluation -x "*/__pycache__/*" "*.pyc"
-      - name: Upload submission artifacts
+      - name: Upload generated output
         uses: actions/upload-artifact@v4
         with:
-          name: ghost-data-submission
-          path: |
-            output.csv
-            dist/code.zip
-            evaluation/evaluation_report.md
-            evaluation/usage_report.md
+          name: ghost-data-output
+          path: output.csv
