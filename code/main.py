@@ -189,15 +189,15 @@ def main(request_path=None, output_path=None):
       tab=n(table)
       res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
       if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
-      state_text=" ".join(n(vals.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+      state_text=" ".join(str(vals.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
       if "backup" in tab or "archive" in tab:
-       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
+       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable","false","0","stopped")):
         findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
         remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
         verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
        continue
       elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")):
-       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
+       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed","false","0","stopped")):
         findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
         remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
         verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
@@ -263,7 +263,7 @@ def main(request_path=None, output_path=None):
      category=collection
      if any(x in category for x in ("security_audit","audit_ledger","legal_hold")):
       continue
-     state_text=" ".join(n(rec.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+     state_text=" ".join(str(rec.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
      if any(x in category for x in ("backup","archive")):
       if any(x in state_text for x in ("blocked","expired","disabled","not_restorable")): continue
       findings.append(step("FINDING",sys,res,"REPORT_RESTORE_RISK","ACTIVE",fid))
@@ -314,10 +314,12 @@ def main(request_path=None, output_path=None):
        for z in v: gather(z)
       elif v is not None: flat.append(n(v))
      gather(obj)
+     observed=str(obj.get("observed_at") or obj.get("captured_at") or "")
+     if cutoff and observed and observed>cutoff: resource=None
      if resource and any(v and v in identifiers for v in flat):
-      category=n(obj.get("category") or obj.get("data_category") or basecat or inherited)
+      category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
       res=str(resource)
-      state_text=" ".join(n(obj.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+      state_text=" ".join(str(obj.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
       if any(x in category for x in ("security_audit","audit_ledger","legal_hold")): pass
       elif any(x in category for x in ("backup","archive")):
        if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
@@ -338,7 +340,7 @@ def main(request_path=None, output_path=None):
        system="export_service" if "export" in category else "search_service" if "search" in category else "marketing_platform" if "marketing" in category else "account_service"
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
      for k,v in obj.items():
-      if isinstance(v,(dict,list)): walk_records(v,n(k) or inherited)
+      if isinstance(v,(dict,list)): walk_records(v,((inherited+"_"+n(k)).strip("_") if inherited else n(k)))
     elif isinstance(obj,list):
      for v in obj: walk_records(v,inherited)
    walk_records(payload,basecat)
