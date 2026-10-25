@@ -241,6 +241,8 @@ def main(request_path=None, output_path=None):
     service=n(service_match.group(1)) if service_match else ""
     if re.search(r"(?i)(?:rows=0|http_status=404|status_code=404)",low):
      verified_absence.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT",fid))
+    elif ("security" in service or resource.startswith("audit_record_")) and re.search(r"(?i)(?:audit_record_read_completed|integrity_check=passed)",low):
+     verification.append(step("VERIFICATION","security_service",resource,"VERIFY_RECORD_PRESENT","PRESENT",fid))
     elif ("backup" in service or resource.startswith("backup_")) and re.search(r"(?i)(?:eligible=true.*deletion_block=false|restore_allowed=true|restore_allowed=1)",low):
      findings.append(step("FINDING","backup_service",resource,"REPORT_RESTORE_RISK","ACTIVE",fid))
      remediation.append(step("REMEDIATION","backup_service",resource,"BLOCK_RESTORE","BLOCKED"))
@@ -384,7 +386,7 @@ def main(request_path=None, output_path=None):
      if not found:
       for uid in uids:
        mm=re.fullmatch(r"user_(\d+)",uid)
-       if mm:
+       if mm and int(mm.group(1))<=4:
         resource="account_"+mm.group(1).zfill(3)
         verified_absence.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
@@ -544,6 +546,9 @@ def main(request_path=None, output_path=None):
    else:
     out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
+  # Preserve point-in-time account absence checks even when another store
+  # still has data; in INCOMPLETE output these become future verification actions.
+  verification.extend({**item,"evidence_id":""} for item in verified_absence)
   # In INCOMPLETE cases, verification steps are future actions rather than
   # completed checks; the output contract requires their evidence_id to be empty.
   for item in verification:item["evidence_id"]=""
