@@ -32,7 +32,7 @@ report=f"""# Evaluation Report
 
 ## Public sample benchmark
 
-- Public sample cases compared: {len(ids)} of {len(truth}.
+- Public sample cases compared: {len(ids)} of {len(truth)}.
 - Deletion-status accuracy: {sc}/{len(ids)} ({sc/len(ids)*100 if ids else 0:.2f}%).
 - Step-level exact accuracy at paired positions (extra/missing steps counted in denominator): {sp}/{st} ({sp/st*100 if st else 0:.2f}%).
 - Field-level accuracy at paired step positions: {fc}/{ft} ({fc/ft*100 if ft else 0:.2f}%).
