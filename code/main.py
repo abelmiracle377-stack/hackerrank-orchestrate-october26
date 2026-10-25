@@ -290,9 +290,13 @@ def main(request_path=None, output_path=None):
         verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
        continue
       elif "analytics" in tab or "telemetry" in tab:
-       findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
-       remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
-       verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+       direct=[n(vals.get(k) or nested.get(k)) for k in ("email","phone","email_hash","full_name","name") if vals.get(k) or nested.get(k)]
+       if any(contains_id(value,ident) for value in direct for ident in identifiers):
+        findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+        remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
+        verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+       else:
+        verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED",fid))
       elif "support" in tab or "email_delivery" in tab:
        direct=[n(vals.get(k)) for k in ("requester_name","requester_email","requester_phone","email","phone","email_hash","full_name","name") if vals.get(k)]
        excerpt=n(vals.get("message_excerpt") or vals.get("message_text") or vals.get("body"))
@@ -378,9 +382,13 @@ def main(request_path=None, output_path=None):
       remediation.append(step("REMEDIATION",sys,res,"DISABLE_DATA_FLOW","DISABLED"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
      elif "analytics" in category or "telemetry" in category:
-      findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
-      remediation.append(step("REMEDIATION",sys,res,"ANONYMIZE_RECORD","ANONYMIZED"))
-      verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+      direct=[n(rec.get(k)) for k in ("email","phone","email_hash","full_name","name") if rec.get(k)]
+      if any(contains_id(value,ident) for value in direct for ident in identifiers):
+       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
+       remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
+       verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+      else:
+       verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED",fid))
      elif "support_attachment" in category or "attachment" in category:
       findings.append(step("FINDING",sys,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
@@ -442,7 +450,11 @@ def main(request_path=None, output_path=None):
        if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed","false","0","stopped")):
         findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid)); remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED")); verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
       elif "analytics" in category or "telemetry" in category:
-       findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED")); verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+       direct=[n(obj.get(k)) for k in ("email","phone","email_hash","full_name","name") if obj.get(k)]
+       if any(contains_id(value,ident) for value in direct for ident in identifiers):
+        findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED")); verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+       else:
+        verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED",fid))
       elif "support_attachment" in category or "attachment" in category:
        findings.append(step("FINDING","support_platform",res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_ABSENT","ABSENT"))
       elif "support" in category or "message" in category:
@@ -473,7 +485,7 @@ def main(request_path=None, output_path=None):
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
    if verified_absence:
-    steps=ordered(dedup(verified_absence))
+    steps=ordered(dedup(verified_absence+verification))
     out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
    else:
     out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
