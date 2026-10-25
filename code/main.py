@@ -264,9 +264,14 @@ def main(request_path=None, output_path=None):
      remediation.append(step("REMEDIATION","search_service",resource,"DELETE_RECORD","ABSENT"))
      verification.append(step("VERIFICATION","search_service",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
     elif ("analytics" in service or resource.startswith("analytics_")) and re.search(r"(?i)(?:contact_lookup_completed.*rows=1|rows=1.*contact_lookup_completed)",low):
-     findings.append(step("FINDING","analytics_platform",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
-     remediation.append(step("REMEDIATION","analytics_platform",resource,"DELETE_RECORD","ABSENT"))
-     verification.append(step("VERIFICATION","analytics_platform",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
+     if re.search(r"(?i)(?:email=\\S+@|phone=|email_hash=)",low):
+      findings.append(step("FINDING","analytics_platform",resource,"REPORT_EXPOSED_PII","PRESENT",fid))
+      remediation.append(step("REMEDIATION","analytics_platform",resource,"ANONYMIZE_RECORD","ANONYMIZED"))
+      verification.append(step("VERIFICATION","analytics_platform",resource,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+     else:
+      findings.append(step("FINDING","analytics_platform",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
+      remediation.append(step("REMEDIATION","analytics_platform",resource,"DELETE_RECORD","ABSENT"))
+      verification.append(step("VERIFICATION","analytics_platform",resource,"VERIFY_RECORD_ABSENT","ABSENT"))
     elif ("account" in service or resource.startswith("account_")) and re.search(r"(?i)(?:profile_lookup_completed.*rows=1|http_status=200)",low):
      findings.append(step("FINDING","account_service",resource,"REPORT_REMAINING_RECORD","PRESENT",fid))
      remediation.append(step("REMEDIATION","account_service",resource,"DELETE_RECORD","ABSENT"))
@@ -535,8 +540,10 @@ def main(request_path=None, output_path=None):
    walk_records(payload,basecat)
   # Deduplicate exact observations and planned actions.
   def dedup(xs):
+   # Keep one step per action/resource/state. Later manifest evidence entries
+   # supersede earlier duplicate observations and usually provide better proof.
    d={}
-   for s in xs:d[(s["phase"],s["system_id"],s["resource_id"],s["operation"],s["state"],s["evidence_id"])]=s
+   for s in xs:d[(s["phase"],s["system_id"],s["resource_id"],s["operation"],s["state"])]=s
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
