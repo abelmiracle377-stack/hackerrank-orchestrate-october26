@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory() as td:
  pred=rows(out)
 T={r["case_id"]:r for r in truth};P={r["case_id"]:r for r in pred};ids=sorted(T.keys() & P.keys())
 sc=sum(T[i]["deletion_status"]==P[i]["deletion_status"] for i in ids)
+mismatch_ids=[i for i in ids if T[i]["deletion_status"]!=P[i]["deletion_status"]]
 seq=0;step_total=step_correct=field_total=field_correct=0
 for cid in ids:
  a=json.loads(T[cid]["steps_json"]);b=json.loads(P[cid]["steps_json"])
@@ -33,6 +34,7 @@ report=f"""# Evaluation Report
 
 - Public sample cases compared: {len(ids)} of {len(truth)}.
 - Deletion-status accuracy: {sc}/{len(ids)} ({sc/len(ids)*100 if ids else 0:.2f}%).
+- Status mismatch case IDs: {", ".join(mismatch_ids)}.
 - Step-level exact accuracy at paired positions: {step_correct}/{step_total} ({step_correct/step_total*100 if step_total else 0:.2f}%).
 - Field-level accuracy at paired step positions: {field_correct}/{field_total} ({field_correct/field_total*100 if field_total else 0:.2f}%).
 - Exact sequence accuracy: {seq}/{len(ids)} ({seq/len(ids)*100 if ids else 0:.2f}%).
