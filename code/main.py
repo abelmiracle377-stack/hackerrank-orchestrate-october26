@@ -132,6 +132,11 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+     tabname=n(table)
+     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
+      uid=sorted(uids)[0].removeprefix("user_")
+      if uid.isdigit() and len(uid)<3: uid=uid.zfill(3)
+      sql_absence.append(step("VERIFICATION","account_service","account_"+uid,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
