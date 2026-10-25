@@ -302,6 +302,23 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+    # A complete primary customer-profile snapshot with no matching subject
+    # supports an absence check; keep this scoped to the exact point-in-time file.
+    for table in tables:
+     if "customer_profiles_primary" not in n(table): continue
+     cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
+     found=False
+     for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
+      vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
+      candidates=[n(v) for v in vals.values() if v is not None]
+      if any(any(contains_id(v,ident) for ident in identifiers) for v in candidates):
+       found=True;break
+     if not found:
+      for uid in uids:
+       mm=re.fullmatch(r"user_(\\d+)",uid)
+       if mm:
+        resource="account_"+mm.group(1).zfill(3)
+        verified_absence.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
