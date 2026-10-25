@@ -53,7 +53,7 @@ def main(request_path=None, output_path=None):
       v=n(a.get(k))
       if v and v not in identifiers:identifiers.add(v);changed=True
   identifiers={x for x in identifiers if len(x)>2}
-  findings=[]; remediation=[]; verification=[]
+  findings=[]; remediation=[]; verification=[]; sql_absence=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # Parse pipe-delimited operational handover records; these are explicit state observations.
@@ -96,10 +96,12 @@ def main(request_path=None, output_path=None):
     tables=[x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     for table in tables:
      cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
+     subject_match=False
      for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
       vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
       scalars=[n(v) for v in vals.values() if v is not None]
       if not any(v and v in identifiers for v in scalars): continue
+      subject_match=True
       tab=n(table)
       res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
       if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
@@ -189,8 +191,13 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # No direct evidence was found. Do not fabricate a resource, state, or citation.
-   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   # Use a point-in-time SQL absence observation only when no other violation
+   # or recreation risk was found for this subject.
+   if sql_absence:
+    steps=ordered(dedup(sql_absence))
+    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
+   else:
+    out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
