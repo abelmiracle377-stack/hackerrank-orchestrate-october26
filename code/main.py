@@ -240,7 +240,7 @@ def main(request_path=None, output_path=None):
       elif "support" in tab or "email_delivery" in tab:
        direct=[n(vals.get(k)) for k in ("requester_name","requester_email","requester_phone","email","phone","email_hash","full_name","name") if vals.get(k)]
        excerpt=n(vals.get("message_excerpt") or vals.get("message_text") or vals.get("body"))
-       has_pii=bool(direct or re.search(r"[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}",excerpt) or re.search(r"\\+?\\d[\\d ()-]{7,}",excerpt))
+       has_pii=bool(direct or "@" in excerpt or sum(ch.isdigit() for ch in excerpt)>=8)
        if has_pii:
         findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
         remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED"))
