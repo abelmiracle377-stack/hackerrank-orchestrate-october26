@@ -283,6 +283,7 @@ def main(request_path=None, output_path=None):
       remediation.append(step("REMEDIATION",sys,res,"DELETE_RECORD","ABSENT"))
       verification.append(step("VERIFICATION",sys,res,"VERIFY_RECORD_ABSENT","ABSENT"))
      elif "support" in category or "message" in category:
+      if any("[redacted]" in n(rec.get(k)) for k in ("message_text","message_excerpt","body","content")): continue
       if "redacted" in state_text and not any(n(rec.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")): continue
       findings.append(step("FINDING",sys,res,"REPORT_EXPOSED_PII","PRESENT",fid))
       remediation.append(step("REMEDIATION",sys,res,"REDACT_RECORD","REDACTED"))
