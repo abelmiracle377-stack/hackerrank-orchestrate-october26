@@ -9,6 +9,16 @@ ORDER={"REPORT_REMAINING_RECORD":0,"REPORT_EXPOSED_PII":1,"REPORT_ACTIVE_DATA_FL
 def read(p):
  with open(p,encoding="utf-8-sig",newline="") as f:return list(csv.DictReader(f))
 def n(x):return str(x or "").strip().casefold()
+def contains_id(text, identifier):
+ text=n(text); identifier=n(identifier)
+ if not text or not identifier:return False
+ if "@" in identifier:return identifier in text
+ if re.fullmatch(r"(?:user|account|search|support|analytics|backup|export|data_flow|integration|tombstone|audit_record|profile)_?\d+",identifier):
+  return re.search(r"(?<![a-z0-9_])"+re.escape(identifier)+r"(?![a-z0-9_])",text) is not None
+ digits=re.sub(r"\D","",identifier)
+ if len(digits)>=8 and sum(ch.isdigit() for ch in identifier)>=8:
+  return re.search(r"(?<!\d)"+re.escape(digits)+r"(?!\d)",re.sub(r"\D","",text)) is not None
+ return re.search(r"(?<![a-z0-9])"+re.escape(identifier)+r"(?![a-z0-9])",text) is not None
 def step(ph,sys,res,op,state,eid=""):return {"step_no":0,"phase":ph,"system_id":sys or "unknown","resource_id":res or "unknown","operation":op,"state":state,"evidence_id":eid or ""}
 def ordered(ss):
  ss.sort(key=lambda s:(PHASE[s["phase"]],ORDER[s["operation"]],s["system_id"],s["resource_id"]))
@@ -126,7 +136,7 @@ def main(request_path=None, output_path=None):
   for fid,captured,txt,suffix,path,origin in media_evid:
    if cutoff and captured and captured>cutoff: continue
    low=txt.casefold()
-   matched=[v for v in identifiers if v and v in low]
+   matched=[v for v in identifiers if v and contains_id(low,v)]
    if not matched: continue
    resource_matches=list(re.finditer(r"\b(?:account|search|support|export|analytics|backup|data_flow|integration|marketing|attachment|profile|record|audit)[_-]?\d+\b",low))
    if not resource_matches: continue
@@ -174,7 +184,7 @@ def main(request_path=None, output_path=None):
    if cutoff and captured and captured>cutoff:continue
    for line in txt.splitlines():
     ll=line.casefold()
-    if not any(v in ll for v in identifiers):continue
+    if not any(contains_id(ll,v) for v in identifiers):continue
     # Format: timestamp | system | resource | category | state | subject
     m=re.search(r"\|\s*([a-z0-9_-]+)\s*\|\s*([a-z0-9_-]+)\s*\|\s*([a-z0-9_-]+)\s*\|\s*([a-z0-9_-]+)\s*\|",ll)
     if m:
@@ -285,7 +295,7 @@ def main(request_path=None, output_path=None):
     for rec in snap.get("records",[]):
      if not isinstance(rec,dict): continue
      flat=json.dumps(rec,ensure_ascii=False,sort_keys=True).casefold()
-     if not any(v in flat for v in identifiers): continue
+     if not any(contains_id(flat,v) for v in identifiers): continue
      res=str(rec.get("resource_id","unknown"))
      # Inspect nested documents as well as top-level fields, but only treat
      # a record as subject-linked when a scalar identifier matches the case.
@@ -362,7 +372,7 @@ def main(request_path=None, output_path=None):
      if resource and "profile_lookups" in inherited and str(obj.get("status_code",""))=="404" and obj.get("profile") is None:
       if any(resource_map.get(uid)==str(resource) for uid in uids):
        verified_absence.append(step("VERIFICATION","account_service",str(resource),"VERIFY_RECORD_ABSENT","ABSENT",fid))
-     if resource and any(v and v in identifiers for v in flat):
+     if resource and any(v and any(contains_id(v,ident) for ident in identifiers) for v in flat):
       category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
       res=str(resource)
       state_text=" ".join(str(obj.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
