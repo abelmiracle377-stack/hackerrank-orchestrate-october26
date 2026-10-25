@@ -197,8 +197,8 @@ def main(request_path=None, output_path=None):
    eligible_profiles=[item for item in account_profile_snapshots if not cutoff or not item[0] or item[0]<=cutoff]
    subject_absent=False
    if eligible_profiles:
-    _,_,latest_profile=max(eligible_profiles,key=lambda x:x[0])
-    subject_absent=not any(contains_id(json.dumps(rec,ensure_ascii=False),ident) for rec in latest_profile.get("records",[]) if isinstance(rec,dict) for ident in identifiers)
+    _,_,latest_profile,profile_text=max(eligible_profiles,key=lambda x:x[0])
+    subject_absent=not any(contains_id(profile_text,ident) for ident in identifiers)
    status_absence=any_404 or subject_absent
   if len(account_deletes)==1:
    account_resource=str(account_deletes[0].get("resource_id",""))
