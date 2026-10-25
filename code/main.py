@@ -214,13 +214,23 @@ def main(request_path=None, output_path=None):
      subject_match=False
      for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
       vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
+      nested={}
+      raw_json=vals.get("record_json") or vals.get("document_json") or vals.get("payload_json")
+      if isinstance(raw_json,str):
+       try:
+        parsed=json.loads(raw_json)
+        if isinstance(parsed,dict): nested=parsed
+       except (ValueError,TypeError): pass
       scalars=[n(v) for v in vals.values() if v is not None]
+      scalars.extend(n(v) for v in nested.values() if v is not None)
       if not any(v and v in identifiers for v in scalars): continue
       subject_match=True
       tab=n(table)
-      res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
-      if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
-      state_text=" ".join(str(vals.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
+      category=n(vals.get("collection_name") or vals.get("category") or vals.get("data_category") or nested.get("collection") or nested.get("category") or tab)
+      res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or nested.get("resource_id") or table)
+      if any(x in category for x in ("security_audit","audit_ledger","legal_hold","security_audit_log")): continue
+      state_text=" ".join(str(vals.get(k,nested.get(k,""))).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
+      tab=category
       if "backup" in tab or "archive" in tab:
        if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable","false","0","stopped")):
         findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
