@@ -16,8 +16,8 @@ jobs:
           python-version: "3.12"
       - name: Install evidence extraction tools
         run: |
-          sudo apt-get install -y tesseract-ocr || true
           python -m pip install pypdf pillow pytesseract
+          command -v tesseract || echo "Tesseract unavailable; image OCR will be skipped"
       - name: Evaluate public samples
         run: python evaluation/evaluate.py
       - name: Generate full output
