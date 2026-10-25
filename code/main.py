@@ -188,6 +188,18 @@ def main(request_path=None, output_path=None):
   # must still support the absence verification.
   reported_day=str(r.get("reported_at",""))[:10]
   account_deletes=account_deletes_by_day.get(reported_day,[])
+  status_absence=False
+  if account_deletes:
+   # A deletion activity on the reported date plus point-in-time 404 evidence
+   # or an account snapshot with no subject identifiers supports completion,
+   # even when the export omits the direct resource-to-subject crosswalk.
+   any_404=any(status_code=="404" and (not cutoff or not observed or observed<=cutoff) for lookups in profile_lookups_by_resource.values() for _,observed,status_code in lookups)
+   eligible_profiles=[item for item in account_profile_snapshots if not cutoff or not item[0] or item[0]<=cutoff]
+   subject_absent=False
+   if eligible_profiles:
+    _,_,latest_profile=max(eligible_profiles,key=lambda x:x[0])
+    subject_absent=not any(contains_id(json.dumps(rec,ensure_ascii=False),ident) for rec in latest_profile.get("records",[]) if isinstance(rec,dict) for ident in identifiers)
+   status_absence=any_404 or subject_absent
   if len(account_deletes)==1:
    account_resource=str(account_deletes[0].get("resource_id",""))
    explicit_404=False
@@ -590,6 +602,9 @@ def main(request_path=None, output_path=None):
   if not findings:
    if verified_absence:
     steps=ordered(dedup(verified_absence+verification))
+    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
+   elif status_absence:
+    steps=ordered(dedup(verification))
     out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
    else:
     out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
