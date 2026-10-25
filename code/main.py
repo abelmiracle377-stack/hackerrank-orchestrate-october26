@@ -97,7 +97,7 @@ def main(request_path=None, output_path=None):
    low=txt.casefold()
    matched=[v for v in identifiers if v and v in low]
    if not matched: continue
-   resource_matches=list(re.finditer(r"\\b(?:account|search|support|export|analytics|backup|data_flow|integration|marketing|attachment|profile|record|audit)[_-]?\\d+\\b",low))
+   resource_matches=list(re.finditer(r"\b(?:account|search|support|export|analytics|backup|data_flow|integration|marketing|attachment|profile|record|audit)[_-]?\d+\b",low))
    if not resource_matches: continue
    target=matched[0]; pos=low.find(target)
    rm=min(resource_matches,key=lambda m:abs(m.start()-pos))
