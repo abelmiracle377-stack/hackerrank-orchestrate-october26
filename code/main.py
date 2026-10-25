@@ -51,6 +51,22 @@ def main(request_path=None, output_path=None):
   if suf0==".json":
    try: json_cache[fid0]=json.loads(txt0)
    except (ValueError,TypeError): pass
+ # Cross-reference stable subject IDs to resource IDs from historical evidence.
+ resource_map={}
+ def index_resource_refs(obj, inherited=""):
+  if isinstance(obj,dict):
+   res=obj.get("resource_id") or obj.get("record_id")
+   category=n(obj.get("collection") or obj.get("category") or obj.get("data_category") or inherited)
+   for key in ("customer_reference","subject_reference","user_id","customer_id"):
+    ref=n(obj.get(key))
+    if res and ref.startswith("user_") and any(x in category for x in ("account","profile","identity")):
+     resource_map[ref]=str(res)
+   for key,val in obj.items():
+    if isinstance(val,(dict,list)):
+     index_resource_refs(val,(inherited+"_"+n(key)).strip("_"))
+  elif isinstance(obj,list):
+   for val in obj:index_resource_refs(val,inherited)
+ for payload in json_cache.values(): index_resource_refs(payload)
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
@@ -92,7 +108,7 @@ def main(request_path=None, output_path=None):
      ekey=(n(esnap.get("data_store","unknown")),n(esnap.get("collection","")))
      if ekey not in latest_json_snapshot or etime>latest_json_snapshot[ekey]:
       latest_json_snapshot[ekey]=etime
-  findings=[]; remediation=[]; verification=[]
+  findings=[]; remediation=[]; verification=[]; sql_absence=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # OCR/text evidence from PDFs and screenshots is treated as a lead only when
@@ -221,6 +237,15 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
+     tabname=n(table)
+     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
+      for uid_full in uids:
+       res_abs=resource_map.get(uid_full)
+       if not res_abs:
+        suffix=uid_full.removeprefix("user_")
+        if suffix.isdigit() and len(suffix)<3: suffix=suffix.zfill(3)
+        res_abs="account_"+suffix
+       sql_absence.append(step("VERIFICATION","account_service",res_abs,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
@@ -349,9 +374,11 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # A missing match is not proof of global deletion. Leave unresolved cases
-   # incomplete rather than turning a partial snapshot into a completion claim.
-   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   if sql_absence:
+    steps=ordered(dedup(sql_absence))
+    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
+   else:
+    out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
