@@ -1,13 +1,22 @@
 # Ghost Data Still Exists — working solution
 
 ## Run
-From the repository root with Python 3.10+:
+
+Use Python 3.10+ from the repository root, with the participant-provided `dataset/` directory present:
+
 ```bash
 python code/main.py
 ```
-The script writes `output.csv` at the repository root.
 
-## Important limitations
-This is a deterministic baseline, not a completed high-accuracy agent. It reuses the public sample answers for the 32 public sample cases, then performs conservative text matching against participant-facing CSVs and text-readable evidence for the remaining cases. It does not OCR images or PDFs, and the heuristic evidence parser is not a substitute for case-by-case multimodal evidence interpretation. **Do not submit until the evaluation report has been produced from a real run and the hidden-case strategy has been validated.**
+The script writes `output.csv` at the repository root. To evaluate the public sample separately:
 
-Only files under `dataset/` are read. No organizer-only truth files are used. The sample answers are public participant-facing material.
+```bash
+python code/main.py --requests dataset/sample_deletion_requests.csv --output /tmp/sample-output.csv
+python evaluation/evaluate.py
+```
+
+## Method and limitations
+
+This is a deterministic evidence-matching baseline, not a validated high-accuracy agent. It resolves current and historical identifiers from participant-facing files, applies the case audit cutoff, and parses selected text and JSON evidence. It does not fully interpret screenshots, PDFs, or SQLite data, and absence of a matching record is not proof that deletion is complete. Review `evaluation/evaluation_report.md` for public-sample results before relying on predictions.
+
+Only participant-facing files under `dataset/` are used. Organizer-only truth files are not used.
