@@ -117,6 +117,30 @@ def main(request_path=None, output_path=None):
      if not any(x in category or x in n(table) for x in ("account","profile","identity")):continue
      if res and ref and n(ref).startswith("user_"):resource_map.setdefault(n(ref),set()).add(str(res))
   finally:db.close()
+ # Pre-index account deletion activities and point-in-time account readbacks
+ # once; the 518-case loop should not rescan every activity and JSON snapshot.
+ account_deletes_by_day=defaultdict(list)
+ for activity in acts:
+  day=str(activity.get("event_time",""))[:10]
+  if n(activity.get("event_type"))=="delete_record" and n(activity.get("target_system"))=="account_service" and n(activity.get("resource_id")).startswith("account_"):
+   account_deletes_by_day[day].append(activity)
+ profile_lookups_by_resource=defaultdict(list)
+ account_profile_snapshots=[]
+ for efid,ecaptured,etxt,esuffix in evid:
+  if esuffix!=".json":continue
+  epayload=json_cache.get(efid)
+  if not isinstance(epayload,dict):continue
+  exports=epayload.get("service_exports",{})
+  if isinstance(exports,dict):
+   lookups=exports.get("account_service",{}).get("profile_lookups",[])
+   for lookup in lookups:
+    res=str(lookup.get("resource_id",""))
+    if res:profile_lookups_by_resource[res].append((efid,str(lookup.get("observed_at","") or ecaptured),str(lookup.get("status_code",""))))
+  for snap in epayload.get("snapshots",[]):
+   store=n(snap.get("data_store",""));collection=n(snap.get("collection",""))
+   snap_time=str(snap.get("captured_at",ecaptured) or ecaptured)
+   if store=="account_service" and ("profile" in collection or "account" in collection):
+    account_profile_snapshots.append((snap_time,efid,snap))
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
@@ -163,26 +187,14 @@ def main(request_path=None, output_path=None):
   # This supplies the resource ID; a separate 404 or latest account snapshot
   # must still support the absence verification.
   reported_day=str(r.get("reported_at",""))[:10]
-  account_deletes=[a for a in acts if n(a.get("event_type"))=="delete_record" and n(a.get("target_system"))=="account_service" and str(a.get("event_time",""))[:10]==reported_day and n(a.get("resource_id")).startswith("account_")]
+  account_deletes=account_deletes_by_day.get(reported_day,[])
   if len(account_deletes)==1:
    account_resource=str(account_deletes[0].get("resource_id",""))
    explicit_404=False
-   profile_snapshots=[]
-   for efid,ecaptured,etxt,esuffix in evid:
-    if esuffix!=".json":continue
-    epayload=json_cache.get(efid)
-    if not isinstance(epayload,dict):continue
-    exports=epayload.get("service_exports",{})
-    lookups=exports.get("account_service",{}).get("profile_lookups",[]) if isinstance(exports,dict) else []
-    for lookup in lookups:
-     observed=str(lookup.get("observed_at","") or ecaptured)
-     if str(lookup.get("resource_id",""))==account_resource and str(lookup.get("status_code",""))=="404" and (not cutoff or not observed or observed<=cutoff):
-      verified_absence.append(step("VERIFICATION","account_service",account_resource,"VERIFY_RECORD_ABSENT","ABSENT",efid));explicit_404=True
-    for snap in epayload.get("snapshots",[]):
-     store=n(snap.get("data_store",""));collection=n(snap.get("collection",""))
-     snap_time=str(snap.get("captured_at",ecaptured) or ecaptured)
-     if store=="account_service" and ("profile" in collection or "account" in collection) and (not cutoff or not snap_time or snap_time<=cutoff):
-      profile_snapshots.append((snap_time,efid,snap))
+   for efid,observed,status_code in profile_lookups_by_resource.get(account_resource,[]):
+    if status_code=="404" and (not cutoff or not observed or observed<=cutoff):
+     verified_absence.append(step("VERIFICATION","account_service",account_resource,"VERIFY_RECORD_ABSENT","ABSENT",efid));explicit_404=True
+   profile_snapshots=[item for item in account_profile_snapshots if not cutoff or not item[0] or item[0]<=cutoff]
    if not explicit_404 and profile_snapshots:
     _,sfid,ssnap=max(profile_snapshots,key=lambda x:x[0])
     if not any(str(rec.get("resource_id",""))==account_resource for rec in ssnap.get("records",[]) if isinstance(rec,dict)):
