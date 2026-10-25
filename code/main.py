@@ -14,7 +14,7 @@ def contains_id(text, identifier):
  if not text or not identifier:return False
  if "@" in identifier:return identifier in text
  digits=re.sub(r"\D","",identifier)
- if len(digits)>=8 and sum(ch.isdigit() for ch in identifier)>=8:
+ if len(digits)>=8 and sum(ch.isdigit() for ch in identifier)>=8 and not re.fullmatch(r"[0-9a-f]{32,}",identifier):
   normalized_digits=re.sub(r"\D","",text)
   if digits not in normalized_digits:return False
   return re.search(r"(?<!\d)"+re.escape(digits)+r"(?!\d)",normalized_digits) is not None
