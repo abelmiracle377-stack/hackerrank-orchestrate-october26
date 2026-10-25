@@ -14,9 +14,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install evidence extraction tools
+      - name: Check optional evidence extraction tools
         run: |
-          python -m pip install pypdf pillow pytesseract
+          python -c "import importlib.util; print('pypdf:', bool(importlib.util.find_spec('pypdf')), 'Pillow:', bool(importlib.util.find_spec('PIL')), 'pytesseract:', bool(importlib.util.find_spec('pytesseract')))"
           command -v tesseract || echo "Tesseract unavailable; image OCR will be skipped"
       - name: Evaluate public samples
         run: python evaluation/evaluate.py
