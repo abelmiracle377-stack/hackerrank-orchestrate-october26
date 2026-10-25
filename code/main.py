@@ -584,7 +584,8 @@ def main(request_path=None, output_path=None):
        if any(n(obj.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")):
         findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
       elif any(x in category for x in ("export","profile","search","marketing","user_data")):
-       system="export_service" if "export" in category else "search_service" if "search" in category else "marketing_platform" if "marketing" in category else "account_service"
+       # Prefer the actual nested service/collection over the bundle's generic "export" ancestry.
+       system="search_service" if "search" in category or "index" in category else "marketing_platform" if "marketing" in category else "export_service" if "export" in category and not any(x in category for x in ("profile","account","user_data")) else "account_service"
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
      for k,v in obj.items():
       if isinstance(v,(dict,list)): walk_records(v,((inherited+"_"+n(k)).strip("_") if inherited else n(k)))
