@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evidence-driven deletion audit baseline. Run: python code/main.py"""
-import csv,json,re
+import argparse,csv,json,re
 from pathlib import Path
 from collections import defaultdict
 ROOT=Path(__file__).resolve().parents[1]; DATA=ROOT/"dataset"; OUT=ROOT/"output.csv"
@@ -24,8 +24,8 @@ def deletion(r):
   r"削除|消去|消して|アカウントの削除|삭제|지워|삭제해|删除|刪除|删除账户|刪除帳戶"
  )
  return any(re.search(p,t) for p in patterns)
-def main():
- req=read(DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
+def main(request_path=None, output_path=None):
+ req=read(request_path or DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
  identity_by_email={n(u.get("email")):u for u in ids if u.get("email")}
  evid=[]
  for m in manifest:
@@ -146,8 +146,14 @@ def main():
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
  out.sort(key=lambda x:x["case_id"])
- with OUT.open("w",encoding="utf-8",newline="") as f:
+ output_path=Path(output_path) if output_path else OUT
+ with output_path.open("w",encoding="utf-8",newline="") as f:
   w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"]);w.writeheader();w.writerows(out)
  assert len(out)==518 and len({x["case_id"] for x in out})==518
- print(f"Wrote {len(out)} rows to {OUT}")
-if __name__=="__main__":main()
+ print(f"Wrote {len(out)} rows to {output_path}")
+if __name__=="__main__":
+ parser=argparse.ArgumentParser()
+ parser.add_argument("--requests",type=Path,default=DATA/"deletion_requests.csv")
+ parser.add_argument("--output",type=Path,default=OUT)
+ args=parser.parse_args()
+ main(args.requests,args.output)
