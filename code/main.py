@@ -87,6 +87,32 @@ def main(request_path=None, output_path=None):
       ref=n(rec.get("customer_reference") or rec.get("subject_reference") or rec.get("user_id") or rec.get("customer_id"))
       if res and ref.startswith("user_"): resource_map[ref]=str(res)
   else: index_resource_refs(payload)
+ # Build historical account-resource mappings from SQL snapshots as well as JSON.
+ for fid,cap,txt,suffix in evid:
+  if suffix!=".sql": continue
+  db=sqlite3.connect(":memory:")
+  try:
+   for statement in txt.split(";"):
+    q=statement.strip()
+    if re.match(r"(?is)^CREATE\s+TABLE\b",q) or re.match(r"(?is)^INSERT\s+INTO\b",q):
+     try: db.execute(q)
+     except sqlite3.DatabaseError: pass
+   for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+    if not any(x in n(table) for x in ("account","profile","identity")): continue
+    cols=[x[1] for x in db.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
+    for rowvals in db.execute('SELECT * FROM "'+table.replace('"','""')+'"'):
+     vals={cols[i]:rowvals[i] for i in range(min(len(cols),len(rowvals)))}
+     nested={}
+     raw=vals.get("record_json") or vals.get("document_json") or vals.get("payload_json")
+     if isinstance(raw,str):
+      try:
+       parsed=json.loads(raw)
+       if isinstance(parsed,dict):nested=parsed
+      except (ValueError,TypeError):pass
+     res=vals.get("resource_id") or vals.get("record_id") or nested.get("resource_id")
+     ref=vals.get("user_id") or vals.get("customer_reference") or vals.get("subject_reference") or nested.get("user_id") or nested.get("customer_reference") or nested.get("subject_reference")
+     if res and ref and n(ref).startswith("user_"):resource_map[n(ref)]=str(res)
+  finally:db.close()
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
