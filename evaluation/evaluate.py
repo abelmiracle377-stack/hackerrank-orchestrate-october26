@@ -57,6 +57,18 @@ for cid in mismatch_ids:
  report+=f"- {cid}: expected {T[cid]['deletion_status']}, predicted {P[cid]['deletion_status']}; expected steps={len(a)}, predicted steps={len(b)}; predicted preview: {preview}.\\n"
 
 report+="""
+## Step-sequence diagnostics
+
+"""
+for cid in ids:
+ a=json.loads(T[cid]["steps_json"]); b=json.loads(P[cid]["steps_json"])
+ if a==b: continue
+ ix=next((j for j in range(min(len(a),len(b))) if a[j]!=b[j]),min(len(a),len(b)))
+ exp=a[ix] if ix<len(a) else None
+ got=b[ix] if ix<len(b) else None
+ report+=f"- {cid}: expected steps={len(a)}, predicted steps={len(b)}, first differing position={ix+1}; expected={exp}; predicted={got}.\\n"
+
+report+="""
 ## Failures found and improvements made
 
 The evaluator compares predictions with public sample outputs. The parser checks nested JSON values, parses SQLite-compatible SQL snapshots, recognizes deletion requests in several represented languages, and avoids fabricating resource IDs or evidence citations when no direct finding is supported. Known gaps remain in PDF/image interpretation and proving absence across every relevant data store. CI contract success is not proof of hidden-case accuracy.
