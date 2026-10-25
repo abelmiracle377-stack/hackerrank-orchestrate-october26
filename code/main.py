@@ -49,21 +49,8 @@ def main():
       if v and v not in identifiers:identifiers.add(v);changed=True
   identifiers={x for x in identifiers if len(x)>2}
   findings=[]; remediation=[]; verification=[]
-  # Current activity uses event_time/event_type/source_system/target_system/resource_id/reported_result.
-  for a in acts:
-   if cutoff and a.get("event_time","")>cutoff:continue
-   hay=" ".join(n(a.get(k)) for k in ("resource_id","details","source_system","target_system"))
-   if not any(v in hay for v in identifiers):continue
-   typ=n(a.get("event_type")); result=n(a.get("reported_result")); src=a.get("source_system","unknown"); dst=a.get("target_system","unknown"); res=a.get("resource_id","unknown"); aid=a.get("activity_id","")
-   if typ in {"SYNC_RECORD","INDEX_RECORD","REFRESH_CACHE","CREATE_EXPORT","RESTORE_BACKUP","IMPORT_RECORD"} and result not in {"failed","failure"}:
-    sys=dst if typ in {"SYNC_RECORD","INDEX_RECORD","REFRESH_CACHE"} else src
-    findings.append(step("FINDING",sys,res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",aid))
-    remediation.append(step("REMEDIATION",sys,res,"DISABLE_DATA_FLOW","DISABLED"))
-    verification.append(step("VERIFICATION",sys,res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
-   if typ in {"RESTORE_BACKUP","RESTORE_RECORD"} and result not in {"failed","failure"}:
-    findings.append(step("FINDING",src,res,"REPORT_RESTORE_RISK","ACTIVE",aid))
-    remediation.append(step("REMEDIATION",src,res,"BLOCK_RESTORE","BLOCKED"))
-    verification.append(step("VERIFICATION",src,res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+  # system_activity.csv records reported operations, not verified resulting state.
+  # Avoid treating those claims as proof of a remaining record or active flow.
   # Parse pipe-delimited operational handover records; these are explicit state observations.
   for fid,captured,txt,suffix in evid:
    if cutoff and captured and captured>cutoff:continue
