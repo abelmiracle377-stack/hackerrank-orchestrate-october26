@@ -107,11 +107,19 @@ def main():
      flat=json.dumps(rec,ensure_ascii=False,sort_keys=True).casefold()
      if not any(v in flat for v in identifiers): continue
      res=str(rec.get("resource_id","unknown"))
-     # Match only a positive identifier-bearing record; unrelated aggregate
-     # rows with null identifiers must not be treated as a user's data.
-     direct_fields=("email","phone","email_hash","full_name","name","customer_reference","user_id","customer_id")
-     direct_values=[n(rec.get(k)) for k in direct_fields if rec.get(k) not in (None,"")]
-     if not any(v in identifiers for v in direct_values): continue
+     # Inspect nested documents as well as top-level fields, but only treat
+     # a record as subject-linked when a scalar identifier matches the case.
+     def scalar_values(obj):
+      if isinstance(obj,dict):
+       for value in obj.values():
+        yield from scalar_values(value)
+      elif isinstance(obj,list):
+       for value in obj:
+        yield from scalar_values(value)
+      elif obj is not None:
+       yield n(obj)
+     direct_values=list(scalar_values(rec))
+     if not any(v and v in identifiers for v in direct_values): continue
      category=collection
      if any(x in category for x in ("security_audit","audit_ledger")):
       continue  # policy-retained audit evidence is not a deletion target
