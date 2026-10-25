@@ -90,7 +90,7 @@ def main(request_path=None, output_path=None):
    try:
     for statement in txt.split(";"):
      q=statement.strip()
-     if re.match(r"(?is)^CREATE\\s+TABLE\\b",q) or re.match(r"(?is)^INSERT\\s+INTO\\b",q):
+     if re.match(r"(?is)^CREATE\s+TABLE\b",q) or re.match(r"(?is)^INSERT\s+INTO\b",q):
       try: db.execute(q)
       except sqlite3.DatabaseError: pass
     tables=[x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
