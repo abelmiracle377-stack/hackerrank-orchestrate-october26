@@ -62,3 +62,13 @@ branch=ghost-data-solution
 repo_root=remote repository branch
 worktree=remote repository branch
 parent_agent=none
+
+
+## 2026-10-25 — Fail closed on unreadable media evidence
+
+User feedback identified a safety gap: PDF/image processing exceptions were silently ignored, and an empty OCR result could be treated as no finding. Updated `code/main.py` to record PDF/image processing failures and empty extracted text. For a deletion case with no positive findings, if any in-scope media evidence is unreadable, the program now returns `INCOMPLETE` with an empty step list rather than marking the case `COMPLETE` from absence evidence alone.
+
+Limitations and verification status:
+- This is a conservative fail-closed safeguard, not a dedicated `INSUFFICIENT_EVIDENCE` or manual-review output state; the existing output contract only permits `COMPLETE`, `INCOMPLETE`, and `NOT_APPLICABLE`.
+- The safeguard currently considers any unreadable PDF/image at or before the case cutoff as potentially relevant. This may increase false `INCOMPLETE` outcomes and should be refined with evidence-to-case relevance tracking.
+- Code was committed to `ghost-data-solution`; the CI workflow must be checked before describing the change as validated. No claim is made here that public-sample accuracy improved.
