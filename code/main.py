@@ -16,8 +16,14 @@ def ordered(ss):
  return ss
 def deletion(r):
  t=n(r.get("request_text"))
- if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account","cancel my deletion")):return False
- return bool(re.search(r"\b(delete|deletion|erase|erasure|remove my account|close my account|close this account|permanent account|exclus[aã]o|supprim|eliminar|borrar)\b",t))
+ if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account","cancel my deletion","do not erase","don't erase")):return False
+ # Recognize explicit deletion language across the locales represented in the data.
+ patterns=(
+  r"\b(delete|deletion|erase|erasure|remove my account|remove my profile|remove my personal|remove my name|close my account|close this account|permanent account|personal-data deletion|delete my data)\b",
+  r"\b(exclus[aã]o|supprim\w*|eliminar|borrar|eliminaci[oó]n|effacer|l[oö]schen|entfernen)\b",
+  r"削除|消去|消して|アカウントの削除|삭제|지워|삭제해|删除|刪除|删除账户|刪除帳戶"
+ )
+ return any(re.search(p,t) for p in patterns)
 def main():
  req=read(DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
  identity_by_email={n(u.get("email")):u for u in ids if u.get("email")}
@@ -133,11 +139,10 @@ def main():
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # Absence cannot be inferred from workflow status; flag the account check as unresolved.
-   res="account_"+(next(iter(uids)).replace("user_","") if uids else cid.removeprefix("case_"))
-   findings=[step("FINDING","account_service",res,"REPORT_REMAINING_RECORD","PRESENT","")]
-   remediation=[step("REMEDIATION","account_service",res,"DELETE_RECORD","ABSENT")]
-   verification=[step("VERIFICATION","account_service",res,"VERIFY_RECORD_ABSENT","ABSENT")]
+   # No direct evidence was found. Do not fabricate a resource, state, or citation.
+   # Keep the deletion unresolved until evidence supports a defensible finding.
+   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
  out.sort(key=lambda x:x["case_id"])
