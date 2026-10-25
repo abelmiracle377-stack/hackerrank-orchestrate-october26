@@ -1,0 +1,20 @@
+
+## [2026-10-25T01:41:00+01:00] Continue to submission validation
+
+User Prompt (verbatim, secrets redacted):
+Ok continue till it's submission
+
+Agent Response Summary:
+Continued the deletion-audit implementation, added SQL snapshot parsing and latest-eligible-snapshot filtering, and expanded public-sample evaluation. The current CI validates the output contract and builds submission artifacts; public-sample accuracy is still under review, so submission readiness has not been claimed.
+
+Actions:
+* Updated code/main.py and evaluation/evaluate.py.
+* Ran GitHub Actions workflow validation and packaged artifacts for inspection.
+
+Context:
+tool=ChatGPT
+model=GPT-6
+branch=ghost-data-solution
+repo_root=unknown
+worktree=remote repository branch
+parent_agent=none
