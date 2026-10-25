@@ -18,8 +18,8 @@ def deletion(r):
  t=n(r.get("request_text"))
  if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account","cancel my deletion","do not erase","don't erase")):return False
  patterns=(
-  r"\b(delete|deletion|erase|erasure|remove my account|remove my profile|remove my personal|remove my name|close my account|close this account|permanent account|personal-data deletion|delete my data)\b",
-  r"\b(exclus[aã]o|supprim\w*|eliminar|borrar|eliminaci[oó]n|effacer|l[oö]schen|entfernen)\b",
+  r"\b(delete|deletion|erase|erasure|remove my account|remove the account|remove account|remove my profile|remove the profile|remove profile|remove my personal|remove my name|remove that search result|close my account|closed my account|close the account|close this account|close it|permanent account|personal-data deletion|delete my data|erase my account|erase the account)\b",
+  r"\b(exclus[aã]o|supprim\w*|eliminar|borrar|eliminaci[oó]n|effacer|l[oö]schen|entfernen|cancellare|cancellazione)\b",
   r"削除|消去|消して|アカウントの削除|삭제|지워|삭제해|删除|刪除|删除账户|刪除帳戶"
  )
  return any(re.search(p,t) for p in patterns)
