@@ -53,7 +53,7 @@ def main(request_path=None, output_path=None):
       v=n(a.get(k))
       if v and v not in identifiers:identifiers.add(v);changed=True
   identifiers={x for x in identifiers if len(x)>2}
-  findings=[]; remediation=[]; verification=[]; sql_absence=[]
+  findings=[]; remediation=[]; verification=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # Parse pipe-delimited operational handover records; these are explicit state observations.
@@ -105,11 +105,12 @@ def main(request_path=None, output_path=None):
       tab=n(table)
       res=str(vals.get("resource_id") or vals.get("record_id") or vals.get("id") or table)
       if any(x in tab for x in ("security_audit","audit_ledger","legal_hold")): continue
-      if "backup" in tab or "archive" in tab:
+      state_text=" ".join(n(vals.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
+      if ("backup" in tab or "archive" in tab) and not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
        findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
        remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
        verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
-      elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")):
+      elif any(x in tab for x in ("sync","integration","connector","data_flow","replication_job")) and not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
        findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
        remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
        verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
@@ -132,11 +133,6 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
-     tabname=n(table)
-     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
-      uid=sorted(uids)[0].removeprefix("user_")
-      if uid.isdigit() and len(uid)<3: uid=uid.zfill(3)
-      sql_absence.append(step("VERIFICATION","account_service","account_"+uid,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
@@ -196,13 +192,9 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   # Use a point-in-time SQL absence observation only when no other violation
-   # or recreation risk was found for this subject.
-   if sql_absence:
-    steps=ordered(dedup(sql_absence))
-    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
-   else:
-    out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   # No direct finding is supported; keep the case unresolved rather than
+   # fabricating a record or inferring global deletion from one snapshot.
+   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
