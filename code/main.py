@@ -39,7 +39,7 @@ def deletion(r):
 def main(request_path=None, output_path=None):
  req=read(request_path or DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
  identity_by_email={n(u.get("email")):u for u in ids if u.get("email")}
- evid=[]; media_evid=[]
+ evid=[]; media_evid=[]; media_failures=[]
  for m in manifest:
   p=DATA/m["file_path"]; suffix=p.suffix.lower()
   if not p.exists(): continue
@@ -51,14 +51,18 @@ def main(request_path=None, output_path=None):
     from pypdf import PdfReader
     txt="\\n".join(page.extract_text() or "" for page in PdfReader(str(p)).pages)
     media_evid.append((m["file_id"],m["captured_at"],txt,suffix,m["file_path"],m.get("origin","")))
-   except Exception:pass
+    if not txt.strip(): media_failures.append((m["file_id"],m["captured_at"],m["file_path"],"empty_or_unreadable_pdf"))
+   except Exception as exc:
+    media_failures.append((m["file_id"],m["captured_at"],m["file_path"],"pdf_processing_failed:"+type(exc).__name__))
   elif suffix in {".png",".jpg",".jpeg",".webp"}:
    try:
     from PIL import Image
     import pytesseract
     txt=pytesseract.image_to_string(Image.open(p))
     media_evid.append((m["file_id"],m["captured_at"],txt,suffix,m["file_path"],m.get("origin","")))
-   except Exception:pass
+    if not txt.strip(): media_failures.append((m["file_id"],m["captured_at"],m["file_path"],"empty_or_unreadable_image"))
+   except Exception as exc:
+    media_failures.append((m["file_id"],m["captured_at"],m["file_path"],"image_ocr_failed:"+type(exc).__name__))
  json_cache={}
  for fid0,cap0,txt0,suf0 in evid:
   if suf0==".json":
@@ -600,6 +604,14 @@ def main(request_path=None, output_path=None):
    for s in xs:d[(s["phase"],s["system_id"],s["resource_id"],s["operation"],s["state"])]=s
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
+  # Fail closed when any in-scope PDF/image could not be read. An empty OCR
+  # result is not proof that the screenshot contains no relevant evidence.
+  # The output contract has no uncertainty status, so use INCOMPLETE until
+  # unreadable evidence can be reviewed; do not claim COMPLETE from absence alone.
+  unreadable_media=[item for item in media_failures if not cutoff or not item[1] or item[1]<=cutoff]
+  if not findings and unreadable_media:
+   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   continue
   if not findings:
    if verified_absence:
     steps=ordered(dedup(verified_absence+verification))
