@@ -26,12 +26,26 @@ def deletion(r):
 def main(request_path=None, output_path=None):
  req=read(request_path or DATA/"deletion_requests.csv"); ids=read(DATA/"user_identities.csv"); audits=read(DATA/"user_audit_log.csv"); acts=read(DATA/"system_activity.csv"); manifest=read(DATA/"evidence_files.csv")
  identity_by_email={n(u.get("email")):u for u in ids if u.get("email")}
- evid=[]
+ evid=[]; media_evid=[]
  for m in manifest:
-  p=DATA/m["file_path"]
-  if p.exists() and p.suffix.lower() in {".txt",".log",".json",".sql",".csv",".md"}:
-   try:evid.append((m["file_id"],m["captured_at"],p.read_text(encoding="utf-8",errors="ignore"),p.suffix.lower()))
+  p=DATA/m["file_path"]; suffix=p.suffix.lower()
+  if not p.exists(): continue
+  if suffix in {".txt",".log",".json",".sql",".csv",".md"}:
+   try:evid.append((m["file_id"],m["captured_at"],p.read_text(encoding="utf-8",errors="ignore"),suffix))
    except OSError:pass
+  elif suffix==".pdf":
+   try:
+    from pypdf import PdfReader
+    txt="\\n".join(page.extract_text() or "" for page in PdfReader(str(p)).pages)
+    media_evid.append((m["file_id"],m["captured_at"],txt,suffix,m["file_path"],m.get("origin","")))
+   except Exception:pass
+  elif suffix in {".png",".jpg",".jpeg",".webp"}:
+   try:
+    from PIL import Image
+    import pytesseract
+    txt=pytesseract.image_to_string(Image.open(p))
+    media_evid.append((m["file_id"],m["captured_at"],txt,suffix,m["file_path"],m.get("origin","")))
+   except Exception:pass
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
@@ -76,6 +90,49 @@ def main(request_path=None, output_path=None):
   findings=[]; remediation=[]; verification=[]; sql_absence=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
+  # OCR/text evidence from PDFs and screenshots is treated as a lead only when
+  # the matched subject identifier and a grounded resource identifier co-occur.
+  for fid,captured,txt,suffix,path,origin in media_evid:
+   if cutoff and captured and captured>cutoff: continue
+   low=txt.casefold()
+   matched=[v for v in identifiers if v and v in low]
+   if not matched: continue
+   resource_matches=list(re.finditer(r"\\b(?:account|search|support|export|analytics|backup|data_flow|integration|marketing|attachment|profile|record|audit)[_-]?\\d+\\b",low))
+   if not resource_matches: continue
+   target=matched[0]; pos=low.find(target)
+   rm=min(resource_matches,key=lambda m:abs(m.start()-pos))
+   res=rm.group(0)
+   context=low[max(0,rm.start()-120):min(len(low),rm.end()+180)]
+   pth=(path+" "+origin).casefold()
+   if any(x in pth for x in ("security","legal_retention","retention_register")): continue
+   if any(x in context for x in ("not found","absent","deleted","redacted","anonymized","anonymised","blocked","disabled","no matching record")): continue
+   if "backup" in pth or res.startswith("backup_"):
+    if any(x in context for x in ("active","enabled","restorable","restore allowed","restore enabled")):
+     findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid))
+     remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED"))
+     verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
+   elif any(x in pth for x in ("integration","connector")) or res.startswith(("data_flow_","integration_")):
+    if any(x in context for x in ("active","enabled","connected","sync","synchronization")):
+     findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid))
+     remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED"))
+     verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
+   elif "analytics" in pth or res.startswith("analytics_"):
+    findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+    remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED"))
+    verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
+   elif "support" in pth or res.startswith(("support_","attachment_")):
+    findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid))
+    remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED"))
+    verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+   elif "search" in pth or res.startswith("search_"):
+    findings.append(step("FINDING","search_service",res,"REPORT_REMAINING_RECORD","PRESENT",fid))
+    remediation.append(step("REMEDIATION","search_service",res,"DELETE_RECORD","ABSENT"))
+    verification.append(step("VERIFICATION","search_service",res,"VERIFY_RECORD_ABSENT","ABSENT"))
+   elif any(x in pth for x in ("export","marketing","account_admin","object_storage")) or res.startswith(("export_","marketing_","account_")):
+    system="export_service" if "export" in pth or res.startswith("export_") else "marketing_platform" if "marketing" in pth or res.startswith("marketing_") else "account_service"
+    findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
+    remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
+    verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
   # Parse pipe-delimited operational handover records; these are explicit state observations.
   for fid,captured,txt,suffix in evid:
    if cutoff and captured and captured>cutoff:continue
