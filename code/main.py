@@ -311,7 +311,7 @@ def main(request_path=None, output_path=None):
       elif v is not None: flat.append(n(v))
      gather(obj)
      if resource and any(v and v in identifiers for v in flat):
-      category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
+      category=n(obj.get("category") or obj.get("data_category") or basecat or inherited)
       res=str(resource)
       state_text=" ".join(n(obj.get(k)) for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state"))
       if any(x in category for x in ("security_audit","audit_ledger","legal_hold")): pass

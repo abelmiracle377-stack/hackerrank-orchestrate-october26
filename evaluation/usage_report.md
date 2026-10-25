@@ -9,4 +9,4 @@
 - Average model tokens per request: 0.
 - Estimated model cost: $0.00 total and $0.00 per request.
 
-These are model-usage figures only and exclude CI compute costs. No LLM, OCR service, or external API is called by the current code.
+These figures describe model usage only and exclude CPU, OCR, package-installation, and GitHub Actions costs. The current code calls no LLM or external inference API. It uses local PDF text extraction and local Tesseract OCR when configured.

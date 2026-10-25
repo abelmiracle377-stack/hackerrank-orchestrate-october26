@@ -55,7 +55,7 @@ jobs:
       - name: Package runnable code and reports
         run: |
           mkdir -p dist
-          zip -r dist/code.zip code README.md evaluation -x "*/__pycache__/*" "*.pyc"
+          zip -r dist/code.zip code README.md requirements.txt evaluation -x "*/__pycache__/*" "*.pyc"
       - name: Upload submission artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -65,3 +65,4 @@ jobs:
             dist/code.zip
             evaluation/evaluation_report.md
             evaluation/usage_report.md
+            log.txt
