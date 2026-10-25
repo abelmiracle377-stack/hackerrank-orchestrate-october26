@@ -73,7 +73,7 @@ def main(request_path=None, output_path=None):
    for key in ("customer_reference","subject_reference","user_id","customer_id"):
     ref=n(obj.get(key))
     if res and ref.startswith("user_") and any(x in category for x in ("account","profile","identity")):
-     resource_map[ref]=str(res)
+     resource_map.setdefault(ref,set()).add(str(res))
    for key,val in obj.items():
     if isinstance(val,(dict,list)):
      index_resource_refs(val,(inherited+"_"+n(key)).strip("_"))
@@ -88,7 +88,7 @@ def main(request_path=None, output_path=None):
       if not isinstance(rec,dict): continue
       res=rec.get("resource_id") or rec.get("record_id")
       ref=n(rec.get("customer_reference") or rec.get("subject_reference") or rec.get("user_id") or rec.get("customer_id"))
-      if res and ref.startswith("user_"): resource_map[ref]=str(res)
+      if res and ref.startswith("user_"): resource_map.setdefault(ref,set()).add(str(res))
   else: index_resource_refs(payload)
  # Build historical account-resource mappings from SQL snapshots as well as JSON.
  for fid,cap,txt,suffix in evid:
@@ -114,7 +114,7 @@ def main(request_path=None, output_path=None):
       except (ValueError,TypeError):pass
      res=vals.get("resource_id") or vals.get("record_id") or nested.get("resource_id")
      ref=vals.get("user_id") or vals.get("customer_reference") or vals.get("subject_reference") or nested.get("user_id") or nested.get("customer_reference") or nested.get("subject_reference")
-     if res and ref and n(ref).startswith("user_"):resource_map[n(ref)]=str(res)
+     if res and ref and n(ref).startswith("user_"):resource_map.setdefault(n(ref),set()).add(str(res))
   finally:db.close()
  out=[]
  for r in req:
@@ -492,7 +492,7 @@ def main(request_path=None, output_path=None):
      observed=str(obj.get("observed_at") or obj.get("captured_at") or "")
      if cutoff and observed and observed>cutoff: resource=None
      if resource and "profile_lookups" in inherited and str(obj.get("status_code",""))=="404" and obj.get("profile") is None:
-      if any(resource_map.get(uid)==str(resource) for uid in uids):
+      if any(str(resource) in resource_map.get(uid,set()) for uid in uids):
        verified_absence.append(step("VERIFICATION","account_service",str(resource),"VERIFY_RECORD_ABSENT","ABSENT",fid))
      if resource and any(v and any(contains_id(v,ident) for ident in identifiers) for v in flat):
       category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
