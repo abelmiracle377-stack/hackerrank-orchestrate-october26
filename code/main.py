@@ -66,7 +66,17 @@ def main(request_path=None, output_path=None):
      index_resource_refs(val,(inherited+"_"+n(key)).strip("_"))
   elif isinstance(obj,list):
    for val in obj:index_resource_refs(val,inherited)
- for payload in json_cache.values(): index_resource_refs(payload)
+ for payload in json_cache.values():
+  if isinstance(payload,dict) and isinstance(payload.get("snapshots"),list):
+   for snap in payload["snapshots"]:
+    store=n(snap.get("data_store","")); collection=n(snap.get("collection",""))
+    if "account" in store or "profile" in collection or "account" in collection:
+     for rec in snap.get("records",[]):
+      if not isinstance(rec,dict): continue
+      res=rec.get("resource_id") or rec.get("record_id")
+      ref=n(rec.get("customer_reference") or rec.get("subject_reference") or rec.get("user_id") or rec.get("customer_id"))
+      if res and ref.startswith("user_"): resource_map[ref]=str(res)
+  else: index_resource_refs(payload)
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
