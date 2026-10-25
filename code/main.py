@@ -13,15 +13,15 @@ def contains_id(text, identifier):
  text=n(text); identifier=n(identifier)
  if not text or not identifier:return False
  if "@" in identifier:return identifier in text
+ token_pattern=r"(?<![a-z0-9_])"+re.escape(identifier)+r"(?![a-z0-9_])" if re.fullmatch(r"(?:user|account|search|support|analytics|backup|export|data_flow|integration|tombstone|audit_record|profile)_?\d+",identifier) else r"(?<![a-z0-9])"+re.escape(identifier)+r"(?![a-z0-9])"
+ if identifier in text:
+  return re.search(token_pattern,text) is not None
  digits=re.sub(r"\D","",identifier)
  if len(digits)>=8 and sum(ch.isdigit() for ch in identifier)>=8 and not re.fullmatch(r"[0-9a-f]{32,}",identifier):
   normalized_digits=re.sub(r"\D","",text)
   if digits not in normalized_digits:return False
   return re.search(r"(?<!\d)"+re.escape(digits)+r"(?!\d)",normalized_digits) is not None
- if identifier not in text:return False
- if re.fullmatch(r"(?:user|account|search|support|analytics|backup|export|data_flow|integration|tombstone|audit_record|profile)_?\d+",identifier):
-  return re.search(r"(?<![a-z0-9_])"+re.escape(identifier)+r"(?![a-z0-9_])",text) is not None
- return re.search(r"(?<![a-z0-9])"+re.escape(identifier)+r"(?![a-z0-9])",text) is not None
+ return False
 def step(ph,sys,res,op,state,eid=""):return {"step_no":0,"phase":ph,"system_id":sys or "unknown","resource_id":res or "unknown","operation":op,"state":state,"evidence_id":eid or ""}
 def ordered(ss):
  ss.sort(key=lambda s:(PHASE[s["phase"]],ORDER[s["operation"]],s["system_id"],s["resource_id"]))
