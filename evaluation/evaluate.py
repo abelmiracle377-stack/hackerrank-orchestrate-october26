@@ -38,7 +38,7 @@ report=f"""# Evaluation Report
 - Field-level accuracy at paired step positions: {field_correct}/{field_total} ({field_correct/field_total*100 if field_total else 0:.2f}%).
 - Exact sequence accuracy: {seq}/{len(ids)} ({seq/len(ids)*100 if ids else 0:.2f}%).
 
-These public-sample metrics are not estimates of hidden-set accuracy.
+Status mismatches (case_id: expected -> predicted): {', '.join(f'{i}:{T[i][\"deletion_status\"]}->{P[i][\"deletion_status\"]}' for i in ids if T[i][\"deletion_status\"]!=P[i][\"deletion_status\"])}.\n\nThese public-sample metrics are not estimates of hidden-set accuracy.
 
 ## Participant-created additional cases
 
