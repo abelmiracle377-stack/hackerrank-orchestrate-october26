@@ -118,7 +118,7 @@ def main(request_path=None, output_path=None):
      ekey=(n(esnap.get("data_store","unknown")),n(esnap.get("collection","")))
      if ekey not in latest_json_snapshot or etime>latest_json_snapshot[ekey]:
       latest_json_snapshot[ekey]=etime
-  findings=[]; remediation=[]; verification=[]; sql_absence=[]
+  findings=[]; remediation=[]; verification=[]; verified_absence=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # OCR/text evidence from PDFs and screenshots is treated as a lead only when
@@ -252,15 +252,6 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
-     tabname=n(table)
-     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
-      for uid_full in uids:
-       res_abs=resource_map.get(uid_full)
-       if not res_abs:
-        suffix=uid_full.removeprefix("user_")
-        if suffix.isdigit() and len(suffix)<3: suffix=suffix.zfill(3)
-        res_abs="account_"+suffix
-       sql_absence.append(step("VERIFICATION","account_service",res_abs,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
@@ -354,6 +345,9 @@ def main(request_path=None, output_path=None):
      gather(obj)
      observed=str(obj.get("observed_at") or obj.get("captured_at") or "")
      if cutoff and observed and observed>cutoff: resource=None
+     if resource and "profile_lookups" in inherited and str(obj.get("status_code",""))=="404" and obj.get("profile") is None:
+      if any(resource_map.get(uid)==str(resource) for uid in uids):
+       verified_absence.append(step("VERIFICATION","account_service",str(resource),"VERIFY_RECORD_ABSENT","ABSENT",fid))
      if resource and any(v and v in identifiers for v in flat):
       category=n(obj.get("category") or obj.get("data_category") or inherited or basecat)
       res=str(resource)
@@ -391,8 +385,8 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   if sql_absence:
-    steps=ordered(dedup(sql_absence))
+   if verified_absence:
+    steps=ordered(dedup(verified_absence))
     out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
    else:
     out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
