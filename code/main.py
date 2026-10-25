@@ -140,7 +140,7 @@ def main(request_path=None, output_path=None):
    store=n(snap.get("data_store",""));collection=n(snap.get("collection",""))
    snap_time=str(snap.get("captured_at",ecaptured) or ecaptured)
    if store=="account_service" and ("profile" in collection or "account" in collection):
-    account_profile_snapshots.append((snap_time,efid,snap))
+    account_profile_snapshots.append((snap_time,efid,snap,json.dumps(snap.get("records",[]),ensure_ascii=False)))
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
@@ -208,7 +208,7 @@ def main(request_path=None, output_path=None):
      verified_absence.append(step("VERIFICATION","account_service",account_resource,"VERIFY_RECORD_ABSENT","ABSENT",efid));explicit_404=True
    profile_snapshots=[item for item in account_profile_snapshots if not cutoff or not item[0] or item[0]<=cutoff]
    if not explicit_404 and profile_snapshots:
-    _,sfid,ssnap=max(profile_snapshots,key=lambda x:x[0])
+    _,sfid,ssnap,_=max(profile_snapshots,key=lambda x:x[0])
     if not any(str(rec.get("resource_id",""))==account_resource for rec in ssnap.get("records",[]) if isinstance(rec,dict)):
      verified_absence.append(step("VERIFICATION","account_service",account_resource,"VERIFY_RECORD_ABSENT","ABSENT",sfid))
   # system_activity.csv records reported operations, not verified resulting state.
