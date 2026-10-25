@@ -54,5 +54,3 @@ The evaluator compares predictions with public sample outputs. The parser checks
 """
 (ROOT/"evaluation"/"evaluation_report.md").write_text(report,encoding="utf-8")
 print(report)
-for cid in mismatch_ids:
- print("DIAG",cid,T[cid]["deletion_status"],P[cid]["deletion_status"],",".join(x["operation"]+":"+x["resource_id"]+":"+x["evidence_id"] for x in json.loads(P[cid]["steps_json"])))
