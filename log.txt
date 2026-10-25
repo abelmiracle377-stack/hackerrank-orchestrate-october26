@@ -72,3 +72,18 @@ Limitations and verification status:
 - This is a conservative fail-closed safeguard, not a dedicated `INSUFFICIENT_EVIDENCE` or manual-review output state; the existing output contract only permits `COMPLETE`, `INCOMPLETE`, and `NOT_APPLICABLE`.
 - The safeguard currently considers any unreadable PDF/image at or before the case cutoff as potentially relevant. This may increase false `INCOMPLETE` outcomes and should be refined with evidence-to-case relevance tracking.
 - Code was committed to `ghost-data-solution`; the CI workflow must be checked before describing the change as validated. No claim is made here that public-sample accuracy improved.
+
+
+## 2026-10-25 — Interview review and reliability follow-up
+
+The interview review identified several limits that should be represented accurately in the repository:
+
+- OCR/PDF extraction failures and empty extracted text could previously be silently ignored. The code was updated to record media failures and, when no positive finding exists, fail closed to INCOMPLETE if media evidence at or before the audit cutoff is unreadable. This conservative fallback may produce false INCOMPLETE results because media-to-case relevance is not yet explicitly modeled.
+- Identifier closure is a candidate-link discovery mechanism, not identity proof. Shared or recycled identifiers can overlink distinct people; temporal ownership and corroboration rules remain future work.
+- The account-name mapping cutoff of 4 and numeric identifier threshold of 8 are implemented heuristics, but their original rationale could not be verified from the recovered development history.
+- The recorded public benchmark had 32/32 status matches but 6/32 exact step-sequence matches. This does not prove hidden-set performance or overfitting.
+- case_26 was not verified as one of the six exact step-sequence matches, and no controlled comparison against an every-snapshot baseline was run. Do not describe it as a measured improvement.
+- Prioritize preventing false COMPLETE decisions when evidence is missing or unreliable before improving step ordering.
+- This log remains a reconstructed development record, not a complete verbatim agent trace; it cannot prove which functions were AI-generated versus human-written.
+
+Follow-up: rerun evaluation/CI after the code changes, inspect current public metrics, and add targeted tests for OCR failure, recycled identifiers, and cutoff boundaries. No hidden-test accuracy or production readiness is claimed.
