@@ -490,6 +490,9 @@ def main(request_path=None, output_path=None):
    else:
     out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
+  # In INCOMPLETE cases, verification steps are future actions rather than
+  # completed checks; the output contract requires their evidence_id to be empty.
+  for item in verification:item["evidence_id"]=""
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
  out.sort(key=lambda x:x["case_id"])
