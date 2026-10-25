@@ -46,6 +46,11 @@ def main(request_path=None, output_path=None):
     txt=pytesseract.image_to_string(Image.open(p))
     media_evid.append((m["file_id"],m["captured_at"],txt,suffix,m["file_path"],m.get("origin","")))
    except Exception:pass
+ json_cache={}
+ for fid0,cap0,txt0,suf0 in evid:
+  if suf0==".json":
+   try: json_cache[fid0]=json.loads(txt0)
+   except (ValueError,TypeError): pass
  out=[]
  for r in req:
   cid=r["case_id"]; email=n(r["email"]); cutoff=r.get("audit_at","")
@@ -79,8 +84,8 @@ def main(request_path=None, output_path=None):
      if table_key not in latest_sql_table or ecaptured>latest_sql_table[table_key]:
       latest_sql_table[table_key]=ecaptured
    elif esuffix==".json":
-    try: epayload=json.loads(etxt)
-    except (ValueError,TypeError): continue
+    epayload=json_cache.get(efid)
+    if not isinstance(epayload,dict): continue
     for esnap in epayload.get("snapshots",[]) if isinstance(epayload,dict) else []:
      etime=str(esnap.get("captured_at",ecaptured) or ecaptured)
      if cutoff and etime and etime>cutoff: continue
@@ -228,9 +233,9 @@ def main(request_path=None, output_path=None):
   # rather than the bundle export timestamp for the audit cutoff.
   for fid,captured,txt,suffix in evid:
    if suffix != ".json": continue
-   try: payload=json.loads(txt)
-   except (ValueError,TypeError): continue
-   snapshots=payload.get("snapshots",[]) if isinstance(payload,dict) else []
+   payload=json_cache.get(fid)
+   if not isinstance(payload,dict): continue
+   snapshots=payload.get("snapshots",[])
    for snap in snapshots:
     snap_time=str(snap.get("captured_at",captured) or captured)
     if cutoff and snap_time and snap_time>cutoff: continue
@@ -294,8 +299,7 @@ def main(request_path=None, output_path=None):
   # configurations) whose records are not wrapped in a snapshots array.
   for fid,captured,txt,suffix in evid:
    if suffix!=".json" or (cutoff and captured and captured>cutoff): continue
-   try: payload=json.loads(txt)
-   except (ValueError,TypeError): continue
+   payload=json_cache.get(fid)
    if not isinstance(payload,dict) or "snapshots" in payload: continue
    basecat=n(payload.get("collection",""))
    source=n(payload.get("source",""))
