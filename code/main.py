@@ -315,7 +315,7 @@ def main(request_path=None, output_path=None):
        found=True;break
      if not found:
       for uid in uids:
-       mm=re.fullmatch(r"user_(\\d+)",uid)
+       mm=re.fullmatch(r"user_(\d+)",uid)
        if mm:
         resource="account_"+mm.group(1).zfill(3)
         verified_absence.append(step("VERIFICATION","account_service",resource,"VERIFY_RECORD_ABSENT","ABSENT",fid))
