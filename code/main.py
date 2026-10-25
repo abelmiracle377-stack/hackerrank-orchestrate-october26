@@ -92,7 +92,7 @@ def main(request_path=None, output_path=None):
      ekey=(n(esnap.get("data_store","unknown")),n(esnap.get("collection","")))
      if ekey not in latest_json_snapshot or etime>latest_json_snapshot[ekey]:
       latest_json_snapshot[ekey]=etime
-  findings=[]; remediation=[]; verification=[]; sql_absence=[]
+  findings=[]; remediation=[]; verification=[]
   # system_activity.csv records reported operations, not verified resulting state.
   # Avoid treating those claims as proof of a remaining record or active flow.
   # OCR/text evidence from PDFs and screenshots is treated as a lead only when
@@ -221,11 +221,6 @@ def main(request_path=None, output_path=None):
        findings.append(step("FINDING",system,res,"REPORT_REMAINING_RECORD","PRESENT",fid))
        remediation.append(step("REMEDIATION",system,res,"DELETE_RECORD","ABSENT"))
        verification.append(step("VERIFICATION",system,res,"VERIFY_RECORD_ABSENT","ABSENT"))
-     tabname=n(table)
-     if not subject_match and any(x in tabname for x in ("customer_profiles","customer_accounts","account_profiles")) and uids:
-      uid=sorted(uids)[0].removeprefix("user_")
-      if uid.isdigit() and len(uid)<3: uid=uid.zfill(3)
-      sql_absence.append(step("VERIFICATION","account_service","account_"+uid,"VERIFY_RECORD_ABSENT","ABSENT",fid))
    finally:
     db.close()
   # Parse nested records in structured JSON snapshots. Each snapshot has its own
@@ -352,12 +347,9 @@ def main(request_path=None, output_path=None):
    return list(d.values())
   findings=dedup(findings);remediation=dedup(remediation);verification=dedup(verification)
   if not findings:
-   if sql_absence:
-    steps=ordered(dedup(sql_absence))
-    out.append({"case_id":cid,"deletion_status":"COMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
-   else:
-    # No direct finding is supported; do not fabricate a resource or citation.
-    out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
+   # A missing match is not proof of global deletion. Leave unresolved cases
+   # incomplete rather than turning a partial snapshot into a completion claim.
+   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":"[]"})
    continue
   steps=ordered(findings+remediation+verification)
   out.append({"case_id":cid,"deletion_status":"INCOMPLETE","steps_json":json.dumps(steps,separators=(",",":"))})
