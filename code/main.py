@@ -318,17 +318,19 @@ def main(request_path=None, output_path=None):
       state_text=" ".join(str(obj.get(k,"")).casefold() for k in ("state","status","account_status","deletion_state","sync_state","restore_state","job_status","record_state","enabled","restore_allowed","download_available","active","is_active","last_delivery_status"))
       if any(x in category for x in ("security","audit","legal_hold")): pass
       elif any(x in category for x in ("backup","archive")):
-       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable")):
+       if not any(x in state_text for x in ("blocked","expired","disabled","not_restorable","false","0","stopped")):
         findings.append(step("FINDING","backup_service",res,"REPORT_RESTORE_RISK","ACTIVE",fid)); remediation.append(step("REMEDIATION","backup_service",res,"BLOCK_RESTORE","BLOCKED")); verification.append(step("VERIFICATION","backup_service",res,"VERIFY_RESTORE_BLOCKED","BLOCKED"))
       elif any(x in category for x in ("integration","connector","data_flow","sync")):
-       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed")):
+       if not any(x in state_text for x in ("disabled","blocked","inactive","revoked","failed","false","0","stopped")):
         findings.append(step("FINDING","integration_service",res,"REPORT_ACTIVE_DATA_FLOW","ACTIVE",fid)); remediation.append(step("REMEDIATION","integration_service",res,"DISABLE_DATA_FLOW","DISABLED")); verification.append(step("VERIFICATION","integration_service",res,"VERIFY_DATA_FLOW_DISABLED","DISABLED"))
       elif "analytics" in category or "telemetry" in category:
        findings.append(step("FINDING","analytics_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","analytics_platform",res,"ANONYMIZE_RECORD","ANONYMIZED")); verification.append(step("VERIFICATION","analytics_platform",res,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED"))
       elif "support_attachment" in category or "attachment" in category:
        findings.append(step("FINDING","support_platform",res,"REPORT_REMAINING_RECORD","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"DELETE_RECORD","ABSENT")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_ABSENT","ABSENT"))
       elif "support" in category or "message" in category:
-       findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
+       if any("[redacted]" in n(obj.get(k)) for k in ("message_text","message_excerpt","body","content")): pass
+       else:
+        findings.append(step("FINDING","support_platform",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","support_platform",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","support_platform",res,"VERIFY_RECORD_REDACTED","REDACTED"))
       elif "tombstone" in category:
        if any(n(obj.get(k)) in identifiers for k in ("email","phone","email_hash","full_name","name")):
         findings.append(step("FINDING","identity_service",res,"REPORT_EXPOSED_PII","PRESENT",fid)); remediation.append(step("REMEDIATION","identity_service",res,"REDACT_RECORD","REDACTED")); verification.append(step("VERIFICATION","identity_service",res,"VERIFY_RECORD_REDACTED","REDACTED"))
