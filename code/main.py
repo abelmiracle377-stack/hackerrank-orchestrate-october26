@@ -75,7 +75,9 @@ def identity_index():
 
 def infer_system(path: str, obj: Any) -> str:
     explicit=norm(obj.get("system") or obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) if isinstance(obj,dict) else ""
-    if explicit: return explicit
+    if explicit:
+        return {"support_replica":"support_platform","customer_data_read_replica":"database_replica",
+                "customer_data_reporting_replica":"database_replica"}.get(explicit,explicit)
     rid=norm(obj.get("resource_id") or obj.get("record_id") or "") if isinstance(obj,dict) else ""
     for prefix,logical in (("account_","account_service"),("analytics_","analytics_platform"),
         ("search_","search_service"),("support_","support_platform"),("export_","export_service"),
@@ -109,6 +111,8 @@ def infer_category(path: str, system: str, obj: Any) -> str:
         if rid.startswith("data_flow_") or "connector_name" in obj: return "ACTIVE_DATA_FLOW"
         if rid.startswith("backup_") or "restore_allowed" in obj: return "BACKUP_ARCHIVE"
         if rid.startswith("tombstone_"): return "ACCOUNT_TOMBSTONE"
+        if "contact_query" in norm(obj.get("line")) or "deletion_marker_check" in norm(obj.get("line")):
+            return "SUPPORT_CONTACT_INDEX"
         if rid.startswith("audit_record_") or "retention_until" in obj: return "SECURITY_AUDIT_LOG"
         if system=="analytics_platform" or rid.startswith("analytics_"): return "ANALYTICS_PROFILE"
         if system=="search_service" or rid.startswith("search_"): return "SEARCH_INDEX_ENTRY"
