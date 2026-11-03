@@ -309,10 +309,11 @@ def matches_alias(payload: Any, aliases: set[str]) -> bool:
     text=norm(json.dumps(payload,ensure_ascii=False,default=str))
     return any(a and a in text for a in aliases)
 
-def relevant(records, aliases, audit_at):
+def relevant(records, aliases, audit_at, extra_resources=None):
     """Resolve resource identity across all evidence, but evaluate state at audit_at."""
     cutoff=when(audit_at)
     linked={(r.system,r.resource) for r in records if aliases.intersection(r.search_values)}
+    linked.update(extra_resources or set())
     candidates=[]
     for r in records:
         ts=when(r.captured)
@@ -428,12 +429,48 @@ def plan(found: list[Evidence]) -> list[Step]:
 def sort_steps(steps: Iterable[Step]):
     return sorted(steps,key=lambda s:(PHASE[s.phase],OP.get(s.operation,99),s.system,s.resource))
 
-def solve(case, records, by_user, reverse):
+def activity_resource_links(case, records, activity_rows):
+    """Use successful deletion-worker events near the reported completion to link opaque resources."""
+    requested=when(case.get("requested_at")); reported=when(case.get("reported_at"))
+    audit=when(case.get("audit_at"))
+    if not reported: return set()
+    lower=reported.replace() - __import__("datetime").timedelta(minutes=60)
+    upper=reported + __import__("datetime").timedelta(minutes=10)
+    events=[]
+    for row in activity_rows:
+        if norm(row.get("source_system"))!="deletion_worker" or norm(row.get("reported_result"))!="success":
+            continue
+        event_time=when(row.get("event_time"))
+        if not event_time or event_time<lower or event_time>upper: continue
+        if requested and event_time<requested: continue
+        resource=norm(row.get("resource_id"))
+        system=norm(row.get("target_system"))
+        if not resource or not system: continue
+        # Only associate resources for which there is an audit-time evidence observation.
+        observed=any(r.resource==resource and r.system==system and
+                     (not audit or not when(r.captured) or when(r.captured)<=audit) for r in records)
+        if observed: events.append((event_time,row,system,resource))
+    links=set()
+    # Prefer one primary account deletion observation, nearest to the reported timestamp.
+    accounts=[e for e in events if e[2]=="account_service" and norm(e[1].get("event_type"))=="delete_record"]
+    if accounts:
+        chosen=min(accounts,key=lambda e:abs((e[0]-reported).total_seconds()))
+        links.add((chosen[2],chosen[3]))
+    # Analytics can be anonymized without retaining a direct identifier; choose the first
+    # successful anonymization in the same request/report window to avoid sibling events.
+    analytics=[e for e in events if e[2]=="analytics_platform" and norm(e[1].get("event_type"))=="anonymize_record"]
+    if analytics:
+        chosen=min(analytics,key=lambda e:e[0])
+        links.add((chosen[2],chosen[3]))
+    return links
+
+def solve(case, records, by_user, reverse, activity_rows=None):
     email=norm(case.get("email",""))
     if not deletion_intent(case.get("request_text","")): return "NOT_APPLICABLE",[]
     aliases={email,sha_email(email)}
     for uid in reverse.get(email,set()): aliases.update(by_user.get(uid,set()))
-    found=relevant(records,aliases,case.get("audit_at",""))
+    extra=activity_resource_links(case,records,activity_rows or [])
+    found=relevant(records,aliases,case.get("audit_at",""),extra)
     steps=plan(found)
     status="INCOMPLETE" if any(s.phase=="REMEDIATION" for s in steps) else "COMPLETE"
     if status=="COMPLETE":
@@ -451,9 +488,10 @@ def main():
     requests=csv_rows(args.requests)
     by_user,reverse=identity_index()
     evidence=evidence_records()
+    activity_rows=csv_rows(DATA/"system_activity.csv")
     results=[]
     for case in requests:
-        status,steps=solve(case,evidence,by_user,reverse)
+        status,steps=solve(case,evidence,by_user,reverse,activity_rows)
         results.append({"case_id":case["case_id"],"deletion_status":status,
                         "steps_json":json.dumps(steps,ensure_ascii=False,separators=(",",":"))})
     results.sort(key=lambda r:r["case_id"])
