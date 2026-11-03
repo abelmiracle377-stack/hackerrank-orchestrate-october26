@@ -211,9 +211,9 @@ def evidence_records():
                         text_content="\\n".join(pages)
                     except (ImportError, OSError, RuntimeError):
                         pass
-                rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                 if not rid_match:
-                    rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",text_content,re.I)
+                        rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
                 objects=[{"resource_id":match_value(rid_match) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".png",".jpg",".jpeg",".tif",".tiff",".webp"}:
                 text_content=""
@@ -223,9 +223,9 @@ def evidence_records():
                     text_content=pytesseract.image_to_string(Image.open(p))
                 except (ImportError, OSError, RuntimeError):
                     pass
-                rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                 if not rid_match:
-                    rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",text_content,re.I)
+                        rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
                 objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".txt",".log",".sql"}:
                 parsed=[]
@@ -241,16 +241,16 @@ def evidence_records():
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
                     if not line.strip(): continue
                     item={"line":line,"line_number":i}
-                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\\s]+)",line):
+                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)",line):
                         item[key]=value.strip("'\\\"")
-                    rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",line,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                     if not rid_match:
-                        rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",line,re.I)
+                        rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
                     if rid_match: item["resource_id"]=match_value(rid_match)
-                    svc=re.search(r"\\bservice=([A-Za-z0-9_.-]+)",line,re.I)
+                    svc=re.search(r"\bservice=([A-Za-z0-9_.-]+)",line,re.I)
                     if svc: item["system"]=svc.group(1)
                     if suffix==".sql":
-                        insert=re.search(r"INSERT\\s+INTO\\s+(\\w+)\\s+VALUES\\s*\\((.*)\\)\\s*;?",line,re.I)
+                        insert=re.search(r"INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*)\)\s*;?",line,re.I)
                         if insert and insert.group(1) in sql_columns:
                             values=next(csv.reader([insert.group(2)],delimiter=",",quotechar="'",skipinitialspace=True))
                             item.update(dict(zip(sql_columns[insert.group(1)],(v.strip() for v in values))))
