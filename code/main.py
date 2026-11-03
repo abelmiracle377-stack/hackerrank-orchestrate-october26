@@ -95,6 +95,12 @@ def infer_category(path: str, system: str, obj: Any) -> str:
       "legal_hold_record":"LEGAL_HOLD_RECORD","backup_archive":"BACKUP_ARCHIVE",
       "account_tombstone":"ACCOUNT_TOMBSTONE"}
     if explicit in category_map: return category_map[explicit]
+    if isinstance(obj,dict):
+        rid=norm(obj.get("resource_id"))
+        if rid.startswith("data_flow_") or "connector_name" in obj: return "ACTIVE_DATA_FLOW"
+        if rid.startswith("backup_") or "restore_allowed" in obj: return "BACKUP_ARCHIVE"
+        if rid.startswith("tombstone_"): return "ACCOUNT_TOMBSTONE"
+        if rid.startswith("audit_record_") or "retention_until" in obj: return "SECURITY_AUDIT_LOG"
     s=norm(path+" "+system+" "+json.dumps(obj,ensure_ascii=False,default=str)[:1000])
     for category,terms in (
         ("SEARCH_INDEX_ENTRY",("search","index")),("USER_EXPORT",("export",)),
@@ -129,7 +135,23 @@ def evidence_records():
             elif suffix==".csv":
                 objects=csv_rows(p)
             elif suffix in {".txt",".log",".sql"}:
-                objects=({"resource_id":f"{p.stem}:line_{i}","line":line} for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1) if line.strip())
+                parsed=[]
+                for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
+                    if not line.strip(): continue
+                    rid_match=re.search(r"\\bresource_id\\s*[=:]\\s*['\\\"]?([\\w.-]+)",line,re.I)
+                    if not rid_match and suffix==".sql":
+                        rid_match=re.search(r"VALUES\\s*\\(\\s*['\\\"](\\w+_\\d+)['\\\"]",line,re.I)
+                    rid=rid_match.group(1) if rid_match else f"{p.stem}:line_{i}"
+                    svc=re.search(r"\\bservice=([\\w.-]+)",line,re.I)
+                    system=svc.group(1) if svc else infer_system(rel,line)
+                    # SQL table names map to their logical source systems.
+                    for table,logical in (("customer_profiles","account_service"),("customer_search_documents","search_service"),
+                        ("customer_analytics_profiles","analytics_platform"),("support_records","support_platform"),
+                        ("customer_exports","export_service"),("connector_subscriptions","integration_service"),
+                        ("backup_restore_entries","backup_service"),("security_audit_records","security_service")):
+                        if table in line: system=logical
+                    parsed.append({"resource_id":rid,"line":line,"system":system,"line_number":i})
+                objects=parsed
             else: continue # Do not infer OCR/image/PDF contents.
             for obj in objects:
                 resource=obj.get("resource_id") or obj.get("record_id") or obj.get("id")
@@ -172,12 +194,27 @@ def plan(found: list[Evidence]) -> list[Step]:
             remediation,state,verify="ANONYMIZE_RECORD","ANONYMIZED","VERIFY_RECORD_ANONYMIZED"
         elif r.category in {"SUPPORT_MESSAGE","SUPPORT_ATTACHMENT","EMAIL_DELIVERY_LOG","ACCOUNT_TOMBSTONE"}:
             remediation,state,verify="REDACT_RECORD","REDACTED","VERIFY_RECORD_REDACTED"
+        elif r.category=="ACTIVE_DATA_FLOW":
+            enabled=norm(r.payload.get("enabled")) in {"true","1","yes"} or norm(r.payload.get("last_delivery_status")) in {"delivered","active","running"}
+            if not enabled: continue
+            remediation,state,verify="DISABLE_DATA_FLOW","DISABLED","VERIFY_DATA_FLOW_DISABLED"
+        elif r.category=="BACKUP_ARCHIVE":
+            allowed=norm(r.payload.get("restore_allowed")) in {"true","1","yes"}
+            if not allowed: continue
+            remediation,state,verify="BLOCK_RESTORE","BLOCKED","VERIFY_RESTORE_BLOCKED"
+        elif r.category=="SECURITY_AUDIT_LOG":
+            # Retention is a policy-preserved record, not a deletion target.
+            out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RECORD_PRESENT","PRESENT",r.file_id))
+            continue
         else: continue # Retention/unknown classes need explicit policy evidence.
         key=(r.system,r.resource,remediation)
         if key in seen: continue
         seen.add(key)
-        finding="REPORT_EXPOSED_PII" if remediation in {"REDACT_RECORD","ANONYMIZE_RECORD"} else "REPORT_REMAINING_RECORD"
-        out.extend((Step("FINDING",r.system,r.resource,finding,"PRESENT",r.file_id),
+        finding=("REPORT_ACTIVE_DATA_FLOW" if remediation=="DISABLE_DATA_FLOW" else
+                 "REPORT_RESTORE_RISK" if remediation=="BLOCK_RESTORE" else
+                 "REPORT_EXPOSED_PII" if remediation in {"REDACT_RECORD","ANONYMIZE_RECORD"} else "REPORT_REMAINING_RECORD")
+        finding_state="ACTIVE" if remediation in {"DISABLE_DATA_FLOW","BLOCK_RESTORE"} else "PRESENT"
+        out.extend((Step("FINDING",r.system,r.resource,finding,finding_state,r.file_id),
                     Step("REMEDIATION",r.system,r.resource,remediation,state),
                     Step("VERIFICATION",r.system,r.resource,verify,state)))
     return out
