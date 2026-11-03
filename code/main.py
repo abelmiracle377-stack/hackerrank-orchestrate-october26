@@ -112,6 +112,8 @@ def infer_category(path: str, system: str, obj: Any) -> str:
         if rid.startswith("data_flow_") or "connector_name" in obj: return "ACTIVE_DATA_FLOW"
         if rid.startswith("backup_") or "restore_allowed" in obj: return "BACKUP_ARCHIVE"
         if rid.startswith("tombstone_"): return "ACCOUNT_TOMBSTONE"
+        if system=="analytics_platform" and ("correlation_key" in obj or "contact_lookup" in norm(obj.get("event"))):
+            return "ANALYTICS_CONTACT_LOOKUP"
         if "contact_query" in norm(obj.get("line")) or "deletion_marker_check" in norm(obj.get("line")):
             return "SUPPORT_CONTACT_INDEX"
         if rid.startswith("audit_record_") or "retention_until" in obj: return "SECURITY_AUDIT_LOG"
@@ -384,7 +386,7 @@ def plan(found: list[Evidence]) -> list[Step]:
                 continue
         pii=has_direct_pii(r.payload)
         stable_link=has_stable_user_link(r.payload)
-        if r.category in {"USER_PROFILE","SECONDARY_IDENTIFIER","SEARCH_INDEX_ENTRY","CACHE_ENTRY","USER_EXPORT","MARKETING_PROFILE","SUPPORT_ATTACHMENT","SUPPORT_CONTACT_INDEX"}:
+        if r.category in {"USER_PROFILE","SECONDARY_IDENTIFIER","SEARCH_INDEX_ENTRY","CACHE_ENTRY","USER_EXPORT","MARKETING_PROFILE","SUPPORT_ATTACHMENT","SUPPORT_CONTACT_INDEX","ANALYTICS_CONTACT_LOOKUP"}:
             remediation,state,verify="DELETE_RECORD","ABSENT","VERIFY_RECORD_ABSENT"
         elif r.category in {"ANALYTICS_PROFILE","PRODUCT_TELEMETRY"}:
             if not pii and not stable_link:
