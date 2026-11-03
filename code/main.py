@@ -6,7 +6,7 @@ applies the supplied deletion policy conservatively, and emits the required CSV.
 PDF/image evidence needs OCR/vision review and is intentionally not guessed.
 """
 from __future__ import annotations
-import csv, hashlib, json, re
+import argparse, csv, hashlib, json, re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -256,7 +256,11 @@ def solve(case, records, by_user, reverse):
     return status,[s.json(i) for i,s in enumerate(ordered,1)]
 
 def main():
-    requests=csv_rows(DATA/"deletion_requests.csv")
+    parser=argparse.ArgumentParser(description="Run the deletion evidence audit")
+    parser.add_argument("--requests",type=Path,default=DATA/"deletion_requests.csv")
+    parser.add_argument("--output",type=Path,default=OUTPUT)
+    args=parser.parse_args()
+    requests=csv_rows(args.requests)
     by_user,reverse=identity_index()
     evidence=evidence_records()
     results=[]
@@ -265,7 +269,8 @@ def main():
         results.append({"case_id":case["case_id"],"deletion_status":status,
                         "steps_json":json.dumps(steps,ensure_ascii=False,separators=(",",":"))})
     results.sort(key=lambda r:r["case_id"])
-    with OUTPUT.open("w",encoding="utf-8",newline="") as f:
+    args.output.parent.mkdir(parents=True,exist_ok=True)
+    with args.output.open("w",encoding="utf-8",newline="") as f:
         w=csv.DictWriter(f,fieldnames=("case_id","deletion_status","steps_json"));w.writeheader();w.writerows(results)
-    print(f"Created {OUTPUT} with {len(results)} case rows.")
+    print(f"Created {args.output} with {len(results)} case rows.")
 if __name__=="__main__": main()
