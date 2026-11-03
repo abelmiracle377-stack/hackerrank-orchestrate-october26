@@ -14,6 +14,8 @@ jobs:
           python-version: "3.11"
       - name: Compile Python
         run: python -m compileall -q code
+      - name: Run synthetic regression cases
+        run: python -m unittest discover -s code/evaluation -p 'test_*.py'
       - name: Generate prediction file
         run: python code/main.py
       - name: Validate output contract
