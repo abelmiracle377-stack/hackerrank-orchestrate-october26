@@ -186,24 +186,42 @@ def evidence_records():
             elif suffix==".csv":
                 objects=csv_rows(p)
             elif suffix==".pdf":
+                text_content=""
                 try:
                     from pypdf import PdfReader
-                    text_content="\n".join(page.extract_text() or "" for page in PdfReader(str(p)).pages)
+                    text_content="\\n".join(page.extract_text() or "" for page in PdfReader(str(p)).pages)
                 except (ImportError, OSError, ValueError):
-                    text_content=""
-                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
-                objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,
-                          "line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
+                    pass
+                if not text_content:
+                    try:
+                        import fitz
+                        from PIL import Image
+                        import pytesseract
+                        pages=[]
+                        with fitz.open(str(p)) as document:
+                            for page in document:
+                                pix=page.get_pixmap(dpi=220,alpha=False)
+                                image=Image.frombytes("RGB",(pix.width,pix.height),pix.samples)
+                                pages.append(pytesseract.image_to_string(image))
+                        text_content="\\n".join(pages)
+                    except (ImportError, OSError, RuntimeError):
+                        pass
+                rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                if not rid_match:
+                    rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",text_content,re.I)
+                objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".png",".jpg",".jpeg",".tif",".tiff",".webp"}:
+                text_content=""
                 try:
                     from PIL import Image
                     import pytesseract
                     text_content=pytesseract.image_to_string(Image.open(p))
                 except (ImportError, OSError, RuntimeError):
-                    text_content=""
-                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
-                objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,
-                          "line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
+                    pass
+                rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                if not rid_match:
+                    rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",text_content,re.I)
+                objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".txt",".log",".sql"}:
                 parsed=[]
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
