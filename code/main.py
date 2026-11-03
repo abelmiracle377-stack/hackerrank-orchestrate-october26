@@ -314,10 +314,15 @@ def relevant(records, aliases, audit_at, extra_resources=None):
     cutoff=when(audit_at)
     linked={(r.system,r.resource) for r in records if aliases.intersection(r.search_values)}
     linked.update(extra_resources or set())
+    current_analytics={resource for system,resource in (extra_resources or set()) if system=="analytics_platform"}
     candidates=[]
     for r in records:
         ts=when(r.captured)
         if cutoff and ts and ts>cutoff: continue
+        # When a request-window anonymization event identifies the current analytics
+        # profile, exclude stale historical profiles from prior deletion cycles.
+        if current_analytics and r.system=="analytics_platform" and r.resource not in current_analytics:
+            continue
         if aliases.intersection(r.search_values) or (r.system,r.resource) in linked:
             candidates.append(r)
     # Keep the freshest available point-in-time observation per resource.
