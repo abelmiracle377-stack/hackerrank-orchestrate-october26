@@ -229,45 +229,49 @@ def evidence_records():
                 objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".txt",".log",".sql"}:
                 parsed=[]
+                sql_columns={
+                  "customer_profiles":["resource_id","customer_reference","full_name","email","phone","email_hash","account_status","updated_at"],
+                  "customer_search_documents":["resource_id","customer_reference","display_name","email","phone","email_hash","index_name","updated_at"],
+                  "customer_analytics_profiles":["resource_id","customer_reference","email","phone","email_hash","audience_cohort","updated_at"],
+                  "support_records":["resource_id","customer_reference","requester_name","requester_email","requester_phone","message_excerpt","updated_at"],
+                  "customer_exports":["resource_id","customer_reference","owner_email","owner_phone","object_key","updated_at"],
+                  "connector_subscriptions":["resource_id","customer_reference","customer_email","connector_name","enabled","last_delivery_status","updated_at"],
+                  "backup_restore_entries":["resource_id","customer_reference","customer_email","archive_key","restore_allowed","updated_at"],
+                  "security_audit_records":["resource_id","subject_reference","event_code","retention_until","updated_at"]}
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
                     if not line.strip(): continue
-                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
-                    if not rid_match:
-                        rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
-                    if not rid_match and suffix==".sql":
-                        rid_match=re.search(r"VALUES\s*\(\s*'([A-Za-z0-9_]+)'",line,re.I)
-                    if not rid_match: continue
-                    rid=match_value(rid_match)
-                    svc=re.search(r"\bservice=([A-Za-z0-9_.-]+)",line,re.I)
-                    system=svc.group(1) if svc else infer_system(rel,line)
-                    # SQL table names map to their logical source systems.
-                    for table,logical in (("customer_profiles","account_service"),("customer_search_documents","search_service"),
-                        ("customer_analytics_profiles","analytics_platform"),("support_records","support_platform"),
-                        ("customer_exports","export_service"),("connector_subscriptions","integration_service"),
-                        ("backup_restore_entries","backup_service"),("security_audit_records","security_service")):
-                        if table in line: system=logical
-                    item={"resource_id":rid,"line":line,"system":system,"line_number":i}
-                    # Materialize key=value log fields and SQL INSERT columns for state interpretation.
-                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)",line):
+                    item={"line":line,"line_number":i}
+                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\\s]+)",line):
                         item[key]=value.strip("'\\\"")
+                    rid_match=re.search(r"\\b(?:resource_id|resource|record_id)\\s*[=:]\\s*([A-Za-z0-9_.-]+)",line,re.I)
+                    if not rid_match:
+                        rid_match=re.search(r"\\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\\d+\\b",line,re.I)
+                    if rid_match: item["resource_id"]=match_value(rid_match)
+                    svc=re.search(r"\\bservice=([A-Za-z0-9_.-]+)",line,re.I)
+                    if svc: item["system"]=svc.group(1)
                     if suffix==".sql":
-                        insert=re.search(r"INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*)\)\s*;?",line,re.I)
-                        if insert:
-                            table=insert.group(1)
-                            columns={
-                              "customer_profiles":["resource_id","customer_reference","full_name","email","phone","email_hash","account_status","updated_at"],
-                              "customer_search_documents":["resource_id","customer_reference","display_name","email","phone","email_hash","index_name","updated_at"],
-                              "customer_analytics_profiles":["resource_id","customer_reference","email","phone","email_hash","audience_cohort","updated_at"],
-                              "support_records":["resource_id","customer_reference","requester_name","requester_email","requester_phone","message_excerpt","updated_at"],
-                              "customer_exports":["resource_id","customer_reference","owner_email","owner_phone","object_key","updated_at"],
-                              "connector_subscriptions":["resource_id","customer_reference","customer_email","connector_name","enabled","last_delivery_status","updated_at"],
-                              "backup_restore_entries":["resource_id","customer_reference","customer_email","archive_key","restore_allowed","updated_at"],
-                              "security_audit_records":["resource_id","subject_reference","event_code","retention_until","updated_at"]}
-                            if table in columns:
-                                values=next(csv.reader([insert.group(2)],delimiter=",",quotechar="'",skipinitialspace=True))
-                                item.update(dict(zip(columns[table],(v.strip() for v in values))))
+                        insert=re.search(r"INSERT\\s+INTO\\s+(\\w+)\\s+VALUES\\s*\\((.*)\\)\\s*;?",line,re.I)
+                        if insert and insert.group(1) in sql_columns:
+                            values=next(csv.reader([insert.group(2)],delimiter=",",quotechar="'",skipinitialspace=True))
+                            item.update(dict(zip(sql_columns[insert.group(1)],(v.strip() for v in values))))
+                            table_system={"customer_profiles":"account_service","customer_search_documents":"search_service",
+                              "customer_analytics_profiles":"analytics_platform","support_records":"support_platform",
+                              "customer_exports":"export_service","connector_subscriptions":"integration_service",
+                              "backup_restore_entries":"backup_service","security_audit_records":"security_service"}
+                            item["system"]=table_system[insert.group(1)]
                     parsed.append(item)
-                objects=parsed
+                if suffix!=".sql":
+                    trace_context={}
+                    for item in parsed:
+                        trace=norm(item.get("trace_id"))
+                        if not trace: continue
+                        context=trace_context.setdefault(trace,{})
+                        for key,value in item.items():
+                            if key not in {"line","line_number"} and norm(value) not in {"","null","none"}:
+                                context[key]=value
+                    parsed=[{**trace_context.get(norm(item.get("trace_id")),{}),**item}
+                            if norm(item.get("trace_id")) else item for item in parsed]
+                objects=[item for item in parsed if item.get("resource_id")]
             else: continue # Do not infer OCR/image/PDF contents.
             for obj in objects:
                 resource=obj.get("resource_id") or obj.get("record_id") or obj.get("id")
