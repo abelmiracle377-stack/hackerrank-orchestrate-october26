@@ -293,7 +293,14 @@ def relevant(records, aliases, audit_at):
         key=(r.system,r.resource)
         current=latest.get(key)
         rt=when(r.captured); ct=when(current.captured) if current else None
-        if current is None or (rt and (ct is None or rt>ct)):
+        def quality(record):
+            payload=record.payload if isinstance(record.payload,dict) else {}
+            state_keys=("status_code","http_status","rows","result","enabled","restore_allowed",
+                        "last_delivery_status","email","phone","email_hash","customer_reference")
+            has_state=sum(1 for name in state_keys if name in payload)
+            line_no=int(payload.get("line_number") or 0)
+            return (has_state,line_no,len(payload))
+        if current is None or (rt and (ct is None or rt>ct)) or (rt==ct and quality(r)>quality(current)):
             latest[key]=r
     return list(latest.values())
 
