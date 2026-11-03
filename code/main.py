@@ -190,7 +190,7 @@ def evidence_records():
                     text_content="\n".join(page.extract_text() or "" for page in PdfReader(str(p)).pages)
                 except (ImportError, OSError, ValueError):
                     text_content=""
-                rid_match=re.search(r"\b(?:resource_id|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                 objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,
                           "line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".png",".jpg",".jpeg",".tif",".tiff",".webp"}:
@@ -200,14 +200,14 @@ def evidence_records():
                     text_content=pytesseract.image_to_string(Image.open(p))
                 except (ImportError, OSError, RuntimeError):
                     text_content=""
-                rid_match=re.search(r"\b(?:resource_id|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",text_content,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                 objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,
                           "line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".txt",".log",".sql"}:
                 parsed=[]
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
                     if not line.strip(): continue
-                    rid_match=re.search(r"\bresource_id\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
+                    rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                     if not rid_match and suffix==".sql":
                         rid_match=re.search(r"VALUES\s*\(\s*'([A-Za-z0-9_]+)'",line,re.I)
                     rid=rid_match.group(1) if rid_match else f"{p.stem}:line_{i}"
