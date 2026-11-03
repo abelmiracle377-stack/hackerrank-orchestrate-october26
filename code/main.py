@@ -76,6 +76,12 @@ def identity_index():
 def infer_system(path: str, obj: Any) -> str:
     explicit=norm(obj.get("system") or obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) if isinstance(obj,dict) else ""
     if explicit: return explicit
+    rid=norm(obj.get("resource_id") or obj.get("record_id") or "") if isinstance(obj,dict) else ""
+    for prefix,logical in (("account_","account_service"),("analytics_","analytics_platform"),
+        ("search_","search_service"),("support_","support_platform"),("export_","export_service"),
+        ("data_flow_","integration_service"),("backup_","backup_service"),("cache_","cache_service"),
+        ("audit_record_","security_service"),("tombstone_","identity_service")):
+        if rid.startswith(prefix): return logical
     s=norm(path+" "+json.dumps(obj,ensure_ascii=False,default=str)[:900])
     for token,system in (("account","account_service"),("profile","profile_service"),
         ("search","search_service"),("analytics","analytics_platform"),("support","support_platform"),
@@ -122,13 +128,26 @@ def infer_category(path: str, system: str, obj: Any) -> str:
     return "UNKNOWN"
 
 def walk(x: Any, inherited: Mapping[str,Any]|None=None):
+    """Walk nested evidence without leaking sibling records into each record."""
     inherited=dict(inherited or {})
+    meta_keys={"captured_at","observed_at","event_time","recorded_at","data_store",
+               "system","system_id","source_system","collection","record_type"}
     if isinstance(x,dict):
-        merged={**inherited,**x}; yield merged
-        for v in x.values():
-            if isinstance(v,(dict,list)): yield from walk(v,merged)
+        meta={k:v for k,v in x.items() if k in meta_keys and not isinstance(v,(dict,list))}
+        context={**inherited,**meta}
+        merged={**context,**x}
+        yield merged
+        for key,child in x.items():
+            if not isinstance(child,(dict,list)): continue
+            child_context=dict(context)
+            service_keys={"account_service","analytics_platform","backup_service","export_service",
+                          "integration_service","search_service","security_service","support_platform",
+                          "cache_service","marketing_service","email_delivery_service"}
+            if key in service_keys: child_context["system"]=key
+            yield from walk(child,child_context)
     elif isinstance(x,list):
-        for v in x: yield from walk(v,inherited)
+        for child in x:
+            yield from walk(child,inherited)
 
 def evidence_values(value: Any) -> set[str]:
     """Extract exact scalar identifiers; never use substring identity matching."""
