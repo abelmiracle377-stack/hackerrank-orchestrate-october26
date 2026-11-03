@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from main import Evidence, deletion_intent, evidence_values, plan, sort_steps, walk
+from main import Evidence, deletion_intent, evidence_values, infer_category, plan, sort_steps, walk
 
 class SyntheticAuditCases(unittest.TestCase):
     """Three small hand-authored policy cases; these supplement sample CSV scoring."""
@@ -33,6 +33,25 @@ class SyntheticAuditCases(unittest.TestCase):
         self.assertEqual(len(rows),2)
         self.assertIn("alpha@example.test",evidence_values(rows[0]))
         self.assertNotIn("beta@example.test",evidence_values(rows[0]))
+
+    def test_http_404_lookup_is_absence_verification(self):
+        category=infer_category("trace.log","account_service",
+          {"resource_id":"account_123","http_status":"404","rows":"0"})
+        self.assertEqual(category,"ABSENT_RECORD")
+        e=Evidence("evidence_x","trace.log","account_service","account_123",
+          "2026-01-01T00:00:00Z",{"http_status":"404","rows":"0"},"ABSENT_RECORD",set())
+        steps=plan([e])
+        self.assertEqual([s.operation for s in steps],["VERIFY_RECORD_ABSENT"])
+
+    def test_support_attachment_is_deleted_not_redacted(self):
+        category=infer_category("delivery_correction_attachment.pdf","support_platform",
+          {"resource_id":"support_001","line":"identity document"})
+        self.assertEqual(category,"SUPPORT_ATTACHMENT")
+        e=Evidence("evidence_y","attachment.pdf","support_platform","support_001",
+          "2026-01-01T00:00:00Z",{"line":"identity document"},"SUPPORT_ATTACHMENT",set())
+        steps=sort_steps(plan([e]))
+        self.assertEqual([s.operation for s in steps],
+          ["REPORT_REMAINING_RECORD","DELETE_RECORD","VERIFY_RECORD_ABSENT"])
 
     def test_retained_security_record_is_verified_not_deleted(self):
         e=Evidence("synthetic_03","synthetic.json","security_service","audit_record_03",
