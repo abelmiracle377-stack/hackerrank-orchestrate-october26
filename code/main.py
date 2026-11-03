@@ -61,6 +61,7 @@ def identity_index():
     for row in csv_rows(DATA/"user_identities.csv"):
         uid=row.get("user_id","")
         vals={norm(row.get(k)) for k in ("name","email","phone","email_hash")}
+        vals.add(norm(uid)) # stable internal user reference appears in retained evidence
         by_user.setdefault(uid,set()).update(v for v in vals if v)
     for row in csv_rows(DATA/"user_audit_log.csv"):
         uid=row.get("user_id","")
@@ -72,6 +73,8 @@ def identity_index():
     return by_user,reverse
 
 def infer_system(path: str, obj: Any) -> str:
+    explicit=norm(obj.get("system") or obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) if isinstance(obj,dict) else ""
+    if explicit: return explicit
     s=norm(path+" "+json.dumps(obj,ensure_ascii=False,default=str)[:900])
     for token,system in (("account","account_service"),("profile","profile_service"),
         ("search","search_service"),("analytics","analytics_platform"),("support","support_platform"),
@@ -82,6 +85,16 @@ def infer_system(path: str, obj: Any) -> str:
     return "evidence_store"
 
 def infer_category(path: str, system: str, obj: Any) -> str:
+    explicit=norm(obj.get("record_type") or obj.get("data_category") or obj.get("category")) if isinstance(obj,dict) else ""
+    category_map={"user_profile":"USER_PROFILE","secondary_identifier":"SECONDARY_IDENTIFIER",
+      "search_index_entry":"SEARCH_INDEX_ENTRY","cache_entry":"CACHE_ENTRY",
+      "support_message":"SUPPORT_MESSAGE","support_attachment":"SUPPORT_ATTACHMENT",
+      "analytics_profile":"ANALYTICS_PROFILE","product_telemetry":"PRODUCT_TELEMETRY",
+      "user_export":"USER_EXPORT","marketing_profile":"MARKETING_PROFILE",
+      "email_delivery_log":"EMAIL_DELIVERY_LOG","security_audit_log":"SECURITY_AUDIT_LOG",
+      "legal_hold_record":"LEGAL_HOLD_RECORD","backup_archive":"BACKUP_ARCHIVE",
+      "account_tombstone":"ACCOUNT_TOMBSTONE"}
+    if explicit in category_map: return category_map[explicit]
     s=norm(path+" "+system+" "+json.dumps(obj,ensure_ascii=False,default=str)[:1000])
     for category,terms in (
         ("SEARCH_INDEX_ENTRY",("search","index")),("USER_EXPORT",("export",)),
@@ -121,9 +134,9 @@ def evidence_records():
             for obj in objects:
                 resource=obj.get("resource_id") or obj.get("record_id") or obj.get("id")
                 if not resource: continue
-                system=norm(obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) or infer_system(rel,obj)
+                system=infer_system(rel,obj)
                 records.append(Evidence(m.get("file_id",""),rel,system,str(resource),
-                    str(obj.get("captured_at") or obj.get("event_time") or m.get("captured_at","")),
+                    str(obj.get("captured_at") or obj.get("event_time") or obj.get("recorded_at") or m.get("captured_at","")),
                     obj,infer_category(rel,system,obj)))
         except (OSError,ValueError,TypeError,csv.Error):
             continue
@@ -132,7 +145,11 @@ def evidence_records():
 def deletion_intent(text: str) -> bool:
     t=norm(text)
     if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account")): return False
-    return any(x in t for x in ("delete","deletion","erase","erasure","remove my","close my account","close this account"))
+    # Explicit deletion vocabulary from the multilingual request set.
+    intents=("delete","deletion","erase","erasure","remove my","close my account","close this account",
+      "eliminar","eliminación","eliminacion","borrar","suprimir","supresión","suppression","supprimer",
+      "effacer","effacement","löschen","loeschen","entfernen","删除","削除","삭제")
+    return any(x in t for x in intents)
 
 def matches_alias(payload: Any, aliases: set[str]) -> bool:
     text=norm(json.dumps(payload,ensure_ascii=False,default=str))
