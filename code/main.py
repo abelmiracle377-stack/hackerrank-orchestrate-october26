@@ -228,9 +228,12 @@ def evidence_records():
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
                     if not line.strip(): continue
                     rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
+                    if not rid_match:
+                        rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
                     if not rid_match and suffix==".sql":
                         rid_match=re.search(r"VALUES\s*\(\s*'([A-Za-z0-9_]+)'",line,re.I)
-                    rid=rid_match.group(1) if rid_match else f"{p.stem}:line_{i}"
+                    if not rid_match: continue
+                    rid=rid_match.group(1)
                     svc=re.search(r"\bservice=([A-Za-z0-9_.-]+)",line,re.I)
                     system=svc.group(1) if svc else infer_system(rel,line)
                     # SQL table names map to their logical source systems.
