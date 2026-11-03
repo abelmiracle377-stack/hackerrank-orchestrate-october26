@@ -60,6 +60,10 @@ def main():
       "## Data checks","",f"- Missing cases: {', '.join(m['missing']) or 'None'}",
       f"- Unexpected cases: {', '.join(m['unexpected']) or 'None'}",
       f"- Invalid steps_json rows: {len(m['errors'])}","",
+      "## Mismatch triage","",
+      f"- Status mismatches: {', '.join(m['status_mismatches']) or 'None'}",
+      f"- Exact-sequence mismatches (first 20): {', '.join(m['sequence_mismatches'][:20]) or 'None'}",
+      f"- Cases with differing step counts (first 20): {', '.join(m['step_count_deltas']) or 'None'}","",
       "Exact sequence matching includes order and evidence IDs. Field accuracy compares fields by position and penalizes omitted or extra steps.",""]
     a.report.parent.mkdir(parents=True,exist_ok=True); a.report.write_text("\n".join(lines),encoding="utf-8")
     print("\n".join(lines))
