@@ -97,10 +97,18 @@ def infer_category(path: str, system: str, obj: Any) -> str:
     if explicit in category_map: return category_map[explicit]
     if isinstance(obj,dict):
         rid=norm(obj.get("resource_id"))
+        status=norm(obj.get("status_code") or obj.get("http_status") or obj.get("result") or obj.get("rows"))
+        if status in {"404","0","not_found","absent","no_hit"} or "rows=0" in norm(obj.get("line")): return "ABSENT_RECORD"
         if rid.startswith("data_flow_") or "connector_name" in obj: return "ACTIVE_DATA_FLOW"
         if rid.startswith("backup_") or "restore_allowed" in obj: return "BACKUP_ARCHIVE"
         if rid.startswith("tombstone_"): return "ACCOUNT_TOMBSTONE"
         if rid.startswith("audit_record_") or "retention_until" in obj: return "SECURITY_AUDIT_LOG"
+        if system=="analytics_platform" or rid.startswith("analytics_"): return "ANALYTICS_PROFILE"
+        if system=="search_service" or rid.startswith("search_"): return "SEARCH_INDEX_ENTRY"
+        if system=="account_service" or rid.startswith("account_"): return "USER_PROFILE"
+        if system=="support_platform" or rid.startswith("support_"): return "SUPPORT_MESSAGE"
+        if system=="export_service" or rid.startswith("export_"): return "USER_EXPORT"
+        if system=="cache_service" or rid.startswith("cache_"): return "CACHE_ENTRY"
     s=norm(path+" "+system+" "+json.dumps(obj,ensure_ascii=False,default=str)[:1000])
     for category,terms in (
         ("SEARCH_INDEX_ENTRY",("search","index")),("USER_EXPORT",("export",)),
@@ -188,6 +196,19 @@ def relevant(records, aliases, audit_at):
 def plan(found: list[Evidence]) -> list[Step]:
     out=[]; seen=set()
     for r in found:
+        if r.category=="ABSENT_RECORD":
+            out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RECORD_ABSENT","ABSENT",r.file_id))
+            continue
+        if r.category=="ACTIVE_DATA_FLOW":
+            enabled=norm(r.payload.get("enabled")) in {"true","1","yes"} or norm(r.payload.get("last_delivery_status")) in {"delivered","active","running"}
+            if not enabled:
+                out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_DATA_FLOW_DISABLED","DISABLED",r.file_id))
+                continue
+        if r.category=="BACKUP_ARCHIVE":
+            allowed=norm(r.payload.get("restore_allowed")) in {"true","1","yes"}
+            if not allowed:
+                out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RESTORE_BLOCKED","BLOCKED",r.file_id))
+                continue
         if r.category in {"USER_PROFILE","SECONDARY_IDENTIFIER","SEARCH_INDEX_ENTRY","CACHE_ENTRY","USER_EXPORT","MARKETING_PROFILE"}:
             remediation,state,verify="DELETE_RECORD","ABSENT","VERIFY_RECORD_ABSENT"
         elif r.category in {"ANALYTICS_PROFILE","PRODUCT_TELEMETRY"}:
@@ -195,12 +216,8 @@ def plan(found: list[Evidence]) -> list[Step]:
         elif r.category in {"SUPPORT_MESSAGE","SUPPORT_ATTACHMENT","EMAIL_DELIVERY_LOG","ACCOUNT_TOMBSTONE"}:
             remediation,state,verify="REDACT_RECORD","REDACTED","VERIFY_RECORD_REDACTED"
         elif r.category=="ACTIVE_DATA_FLOW":
-            enabled=norm(r.payload.get("enabled")) in {"true","1","yes"} or norm(r.payload.get("last_delivery_status")) in {"delivered","active","running"}
-            if not enabled: continue
             remediation,state,verify="DISABLE_DATA_FLOW","DISABLED","VERIFY_DATA_FLOW_DISABLED"
         elif r.category=="BACKUP_ARCHIVE":
-            allowed=norm(r.payload.get("restore_allowed")) in {"true","1","yes"}
-            if not allowed: continue
             remediation,state,verify="BLOCK_RESTORE","BLOCKED","VERIFY_RESTORE_BLOCKED"
         elif r.category=="SECURITY_AUDIT_LOG":
             # Retention is a policy-preserved record, not a deletion target.
