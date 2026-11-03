@@ -41,7 +41,7 @@ jobs:
       - name: Build sample evaluation report
         run: python code/evaluation/main.py --predicted sample_prediction.csv --expected dataset/sample_output.csv
       - name: Package code.zip
-        run: zip -r code.zip code
+        run: zip -r code.zip code -x '*/__pycache__/*' '*.pyc'
       - name: Upload outputs
         uses: actions/upload-artifact@v4
         with:
