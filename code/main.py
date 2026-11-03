@@ -226,7 +226,7 @@ def evidence_records():
                     rid_match=re.search(r"\b(?:resource_id|resource|record_id)\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                 if not rid_match:
                         rid_match=re.search(r"\b(?:account|search|support|analytics|export|data_flow|backup|audit_record|tombstone)_\d+\b",line,re.I)
-                objects=[{"resource_id":rid_match.group(1) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
+                objects=[{"resource_id":match_value(rid_match) if rid_match else p.stem,"line":text_content,"system":infer_system(rel,text_content)}] if text_content else []
             elif suffix in {".txt",".log",".sql"}:
                 parsed=[]
                 sql_columns={
