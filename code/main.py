@@ -196,7 +196,27 @@ def evidence_records():
                         ("customer_exports","export_service"),("connector_subscriptions","integration_service"),
                         ("backup_restore_entries","backup_service"),("security_audit_records","security_service")):
                         if table in line: system=logical
-                    parsed.append({"resource_id":rid,"line":line,"system":system,"line_number":i})
+                    item={"resource_id":rid,"line":line,"system":system,"line_number":i}
+                    # Materialize key=value log fields and SQL INSERT columns for state interpretation.
+                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\\s]+)",line):
+                        item[key]=value.strip("'\\\"")
+                    if suffix==".sql":
+                        insert=re.search(r"INSERT\\s+INTO\\s+(\\w+)\\s+VALUES\\s*\\((.*)\\)\\s*;?",line,re.I)
+                        if insert:
+                            table=insert.group(1)
+                            columns={
+                              "customer_profiles":["resource_id","customer_reference","full_name","email","phone","email_hash","account_status","updated_at"],
+                              "customer_search_documents":["resource_id","customer_reference","display_name","email","phone","email_hash","index_name","updated_at"],
+                              "customer_analytics_profiles":["resource_id","customer_reference","email","phone","email_hash","audience_cohort","updated_at"],
+                              "support_records":["resource_id","customer_reference","requester_name","requester_email","requester_phone","message_excerpt","updated_at"],
+                              "customer_exports":["resource_id","customer_reference","owner_email","owner_phone","object_key","updated_at"],
+                              "connector_subscriptions":["resource_id","customer_reference","customer_email","connector_name","enabled","last_delivery_status","updated_at"],
+                              "backup_restore_entries":["resource_id","customer_reference","customer_email","archive_key","restore_allowed","updated_at"],
+                              "security_audit_records":["resource_id","subject_reference","event_code","retention_until","updated_at"]}
+                            if table in columns:
+                                values=next(csv.reader([insert.group(2)],delimiter=",",quotechar="'",skipinitialspace=True))
+                                item.update(dict(zip(columns[table],(v.strip() for v in values))))
+                    parsed.append(item)
                 objects=parsed
             else: continue # Do not infer OCR/image/PDF contents.
             for obj in objects:
@@ -204,7 +224,7 @@ def evidence_records():
                 if not resource: continue
                 system=infer_system(rel,obj)
                 records.append(Evidence(m.get("file_id",""),rel,system,str(resource),
-                    str(obj.get("captured_at") or obj.get("event_time") or obj.get("recorded_at") or m.get("captured_at","")),
+                    str(m.get("captured_at","")),
                     obj,infer_category(rel,system,obj),evidence_values(obj)))
         except (OSError,ValueError,TypeError,csv.Error):
             continue
@@ -214,7 +234,7 @@ def deletion_intent(text: str) -> bool:
     t=norm(text)
     if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account")): return False
     # Explicit deletion vocabulary from the multilingual request set.
-    intents=("delete","deletion","erase","erasure","remove my","close my account","close this account",
+    intents=("delet","deletion","erase","erasure","remove","remov","close","closed","closing",
       "eliminar","eliminación","eliminacion","borrar","suprimir","supresión","suppression","supprimer",
       "effacer","effacement","löschen","loeschen","entfernen","删除","削除","삭제")
     return any(x in t for x in intents)
