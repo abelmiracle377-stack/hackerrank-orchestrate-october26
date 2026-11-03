@@ -198,10 +198,10 @@ def evidence_records():
                         if table in line: system=logical
                     item={"resource_id":rid,"line":line,"system":system,"line_number":i}
                     # Materialize key=value log fields and SQL INSERT columns for state interpretation.
-                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\\s]+)",line):
+                    for key,value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)",line):
                         item[key]=value.strip("'\\\"")
                     if suffix==".sql":
-                        insert=re.search(r"INSERT\\s+INTO\\s+(\\w+)\\s+VALUES\\s*\\((.*)\\)\\s*;?",line,re.I)
+                        insert=re.search(r"INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*)\)\s*;?",line,re.I)
                         if insert:
                             table=insert.group(1)
                             columns={
