@@ -117,6 +117,7 @@ def infer_category(path: str, system: str, obj: Any) -> str:
         if system=="analytics_platform" or rid.startswith("analytics_"): return "ANALYTICS_PROFILE"
         if system=="search_service" or rid.startswith("search_"): return "SEARCH_INDEX_ENTRY"
         if system=="account_service" or rid.startswith("account_"): return "USER_PROFILE"
+        if system=="support_platform" and "attachment" in norm(path): return "SUPPORT_ATTACHMENT"
         if system=="support_platform" or rid.startswith("support_"): return "SUPPORT_MESSAGE"
         if system=="export_service" or rid.startswith("export_"): return "USER_EXPORT"
         if system=="cache_service" or rid.startswith("cache_"): return "CACHE_ENTRY"
@@ -264,6 +265,8 @@ def evidence_records():
 def deletion_intent(text: str) -> bool:
     t=norm(text)
     if any(x in t for x in ("do not delete","don't delete","not requesting deletion","keep my account")): return False
+    if any(x in t for x in ("profile is gone","cannot identify me","account still existed",
+                            "check the latest state","check latest state","deletion audit")): return True
     # Explicit deletion vocabulary from the multilingual request set.
     intents=("delet","deletion","erase","erasure","remove","remov","close","closed","closing",
       "eliminar","eliminación","eliminacion","borrar","suprimir","supresión","suppression","supprimer",
