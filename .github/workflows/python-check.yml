@@ -36,12 +36,15 @@ jobs:
                   assert step["step_no"]==n
                   assert step["phase"] in {"FINDING","REMEDIATION","VERIFICATION"}
           PY
+      - name: Generate sample prediction
+        run: python code/main.py --requests dataset/sample_deletion_requests.csv --output sample_prediction.csv
       - name: Build sample evaluation report
-        run: python code/evaluation/main.py
+        run: python code/evaluation/main.py --predicted sample_prediction.csv --expected dataset/sample_output.csv
       - name: Upload outputs
         uses: actions/upload-artifact@v4
         with:
           name: deletion-audit-check-output
           path: |
             output.csv
+            sample_prediction.csv
             code/evaluation/evaluation_report.md
