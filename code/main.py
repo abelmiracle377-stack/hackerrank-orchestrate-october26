@@ -141,10 +141,10 @@ def evidence_values(value: Any) -> set[str]:
         raw=str(value).strip()
         if raw: found.add(norm(raw))
         # Log lines embed identifiers inside key=value text. Extract only complete values.
-        for pattern in (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
-                        r"\\buser_\\d+\\b",r"\\b[a-fA-F0-9]{64}\\b"):
+        for pattern in (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+                        r"\buser_\d+\b",r"\b[a-fA-F0-9]{64}\b"):
             for match in re.findall(pattern,raw,re.I): found.add(norm(match))
-        kv=r"(?:lookup_key|customer_reference|subject_reference|user_id|email|customer_email|owner_email|requester_email|email_hash|phone|full_name|requester_name)\\s*[=:]\\s*['\\\"]?([^,\\s'\\\"]+)"
+        kv=r"(?:lookup_key|customer_reference|subject_reference|user_id|email|customer_email|owner_email|requester_email|email_hash|phone|full_name|requester_name)\s*[=:]\s*['\"]?([^,\s'\"]+)"
         for match in re.findall(kv,raw,re.I): found.add(norm(match))
     return found
 
