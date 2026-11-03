@@ -30,6 +30,7 @@ class Evidence:
     captured: str
     payload: Any
     category: str
+    search_text: str
 
 @dataclass
 class Step:
@@ -167,7 +168,7 @@ def evidence_records():
                 system=infer_system(rel,obj)
                 records.append(Evidence(m.get("file_id",""),rel,system,str(resource),
                     str(obj.get("captured_at") or obj.get("event_time") or obj.get("recorded_at") or m.get("captured_at","")),
-                    obj,infer_category(rel,system,obj)))
+                    obj,infer_category(rel,system,obj),norm(json.dumps(obj,ensure_ascii=False,default=str))))
         except (OSError,ValueError,TypeError,csv.Error):
             continue
     return records
@@ -190,7 +191,7 @@ def relevant(records, aliases, audit_at):
     for r in records:
         ts=when(r.captured)
         if cutoff and ts and ts>cutoff: continue
-        if matches_alias(r.payload,aliases): found.append(r)
+        if any(a and a in r.search_text for a in aliases): found.append(r)
     return found
 
 def plan(found: list[Evidence]) -> list[Step]:
