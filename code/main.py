@@ -290,6 +290,38 @@ def relevant(records, aliases, audit_at):
             latest[key]=r
     return list(latest.values())
 
+def has_direct_pii(payload: Any) -> bool:
+    """Whether a retained record still contains direct identifiers requiring treatment."""
+    keys={"name","full_name","email","phone","email_hash","requester_name","requester_email",
+          "requester_phone","owner_email","owner_phone","customer_email","display_name"}
+    def visit(value):
+        if isinstance(value,dict):
+            for key,item in value.items():
+                if norm(key) in keys and item is not None and norm(item) not in {"","null","none"}:
+                    return True
+                if visit(item): return True
+        elif isinstance(value,(list,tuple)):
+            return any(visit(item) for item in value)
+        elif isinstance(value,str):
+            for key in keys:
+                if re.search(r"\\b"+re.escape(key)+r"\\s*[=:]\\s*(?!null\\b|none\\b|['\\\"]?null)",value,re.I):
+                    return True
+        return False
+    return visit(payload)
+
+def has_stable_user_link(payload: Any) -> bool:
+    keys={"user_id","customer_reference","subject_reference"}
+    def visit(value):
+        if isinstance(value,dict):
+            return any(norm(k) in keys and item is not None and norm(item) not in {"","null","none"}
+                       or visit(item) for k,item in value.items())
+        if isinstance(value,(list,tuple)): return any(visit(item) for item in value)
+        if isinstance(value,str):
+            return any(re.search(r"\\b"+k+r"\\s*[=:]\\s*(?!null\\b|none\\b|['\\\"]?null)",value,re.I)
+                       for k in keys)
+        return False
+    return visit(payload)
+
 def plan(found: list[Evidence]) -> list[Step]:
     out=[]; seen=set()
     for r in found:
@@ -306,21 +338,28 @@ def plan(found: list[Evidence]) -> list[Step]:
             if not allowed:
                 out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RESTORE_BLOCKED","BLOCKED",r.file_id))
                 continue
-        if r.category in {"USER_PROFILE","SECONDARY_IDENTIFIER","SEARCH_INDEX_ENTRY","CACHE_ENTRY","USER_EXPORT","MARKETING_PROFILE"}:
+        pii=has_direct_pii(r.payload)
+        stable_link=has_stable_user_link(r.payload)
+        if r.category in {"USER_PROFILE","SECONDARY_IDENTIFIER","SEARCH_INDEX_ENTRY","CACHE_ENTRY","USER_EXPORT","MARKETING_PROFILE","SUPPORT_ATTACHMENT","SUPPORT_CONTACT_INDEX"}:
             remediation,state,verify="DELETE_RECORD","ABSENT","VERIFY_RECORD_ABSENT"
         elif r.category in {"ANALYTICS_PROFILE","PRODUCT_TELEMETRY"}:
+            if not pii and not stable_link:
+                out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RECORD_ANONYMIZED","ANONYMIZED",r.file_id))
+                continue
             remediation,state,verify="ANONYMIZE_RECORD","ANONYMIZED","VERIFY_RECORD_ANONYMIZED"
-        elif r.category in {"SUPPORT_MESSAGE","SUPPORT_ATTACHMENT","EMAIL_DELIVERY_LOG","ACCOUNT_TOMBSTONE"}:
+        elif r.category in {"SUPPORT_MESSAGE","EMAIL_DELIVERY_LOG","ACCOUNT_TOMBSTONE"}:
+            if not pii:
+                out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RECORD_REDACTED","REDACTED",r.file_id))
+                continue
             remediation,state,verify="REDACT_RECORD","REDACTED","VERIFY_RECORD_REDACTED"
         elif r.category=="ACTIVE_DATA_FLOW":
             remediation,state,verify="DISABLE_DATA_FLOW","DISABLED","VERIFY_DATA_FLOW_DISABLED"
         elif r.category=="BACKUP_ARCHIVE":
             remediation,state,verify="BLOCK_RESTORE","BLOCKED","VERIFY_RESTORE_BLOCKED"
         elif r.category=="SECURITY_AUDIT_LOG":
-            # Retention is a policy-preserved record, not a deletion target.
             out.append(Step("VERIFICATION",r.system,r.resource,"VERIFY_RECORD_PRESENT","PRESENT",r.file_id))
             continue
-        else: continue # Retention/unknown classes need explicit policy evidence.
+        else: continue
         key=(r.system,r.resource,remediation)
         if key in seen: continue
         seen.add(key)
@@ -331,7 +370,14 @@ def plan(found: list[Evidence]) -> list[Step]:
         out.extend((Step("FINDING",r.system,r.resource,finding,finding_state,r.file_id),
                     Step("REMEDIATION",r.system,r.resource,remediation,state),
                     Step("VERIFICATION",r.system,r.resource,verify,state)))
-    return out
+    # A resource may be repeated in logs and snapshots; emit each logical step once.
+    unique={}
+    for step in out:
+        key=(step.phase,step.system,step.resource,step.operation,step.state)
+        old=unique.get(key)
+        if old is None or (not old.evidence_id and step.evidence_id):
+            unique[key]=step
+    return list(unique.values())
 
 def sort_steps(steps: Iterable[Step]):
     return sorted(steps,key=lambda s:(PHASE[s.phase],OP.get(s.operation,99),s.system,s.resource))
