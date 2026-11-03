@@ -146,11 +146,11 @@ def evidence_records():
                 parsed=[]
                 for i,line in enumerate(p.read_text(encoding="utf-8",errors="replace").splitlines(),1):
                     if not line.strip(): continue
-                    rid_match=re.search(r"\\bresource_id\\s*[=:]\\s*['\\\"]?([\\w.-]+)",line,re.I)
+                    rid_match=re.search(r"\bresource_id\s*[=:]\s*([A-Za-z0-9_.-]+)",line,re.I)
                     if not rid_match and suffix==".sql":
-                        rid_match=re.search(r"VALUES\\s*\\(\\s*['\\\"](\\w+_\\d+)['\\\"]",line,re.I)
+                        rid_match=re.search(r"VALUES\s*\(\s*'([A-Za-z0-9_]+)'",line,re.I)
                     rid=rid_match.group(1) if rid_match else f"{p.stem}:line_{i}"
-                    svc=re.search(r"\\bservice=([\\w.-]+)",line,re.I)
+                    svc=re.search(r"\bservice=([A-Za-z0-9_.-]+)",line,re.I)
                     system=svc.group(1) if svc else infer_system(rel,line)
                     # SQL table names map to their logical source systems.
                     for table,logical in (("customer_profiles","account_service"),("customer_search_documents","search_service"),
