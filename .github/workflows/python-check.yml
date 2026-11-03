@@ -50,4 +50,6 @@ jobs:
             code.zip
             output.csv
             sample_prediction.csv
+            dataset/sample_output.csv
+            dataset/sample_deletion_requests.csv
             code/evaluation/evaluation_report.md
