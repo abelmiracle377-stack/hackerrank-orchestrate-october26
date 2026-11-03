@@ -29,7 +29,14 @@ def evaluate(pred,exp):
             es=e[i] if i<len(e) and isinstance(e[i],dict) else {}
             for key in FIELDS:
                 total+=1; correct+=ps.get(key)==es.get(key)
+    status_mismatches=[c for c in shared if pred[c].get("deletion_status")!=exp[c].get("deletion_status")]
+    sequence_mismatches=[c for c in shared if pred[c].get("steps")!=exp[c].get("steps")]
+    step_count_deltas={c:{"predicted":len(pred[c]["steps"] or []),"expected":len(exp[c]["steps"] or [])}
+      for c in shared if pred[c].get("steps") is not None and exp[c].get("steps") is not None
+      and len(pred[c]["steps"])!=len(exp[c]["steps"])}
     return dict(expected=len(exp),predicted=len(pred),matched=n,status_correct=status,
+      status_mismatches=status_mismatches,sequence_mismatches=sequence_mismatches,
+      step_count_deltas=step_count_deltas,
       status_accuracy=status/n if n else 0,exact=exact,sequence_accuracy=exact/n if n else 0,
       fields_correct=correct,fields_total=total,field_accuracy=correct/total if total else 0,
       pred_steps=pcount,expected_steps=ecount,missing=sorted(set(exp)-set(pred)),
