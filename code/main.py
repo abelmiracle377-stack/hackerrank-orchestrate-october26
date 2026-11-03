@@ -74,16 +74,17 @@ def identity_index():
     return by_user,reverse
 
 def infer_system(path: str, obj: Any) -> str:
-    explicit=norm(obj.get("system") or obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) if isinstance(obj,dict) else ""
-    if explicit:
-        return {"support_replica":"support_platform","customer_data_read_replica":"database_replica",
-                "customer_data_reporting_replica":"database_replica"}.get(explicit,explicit)
     rid=norm(obj.get("resource_id") or obj.get("record_id") or "") if isinstance(obj,dict) else ""
+    # Resource namespace is a stronger system signal than an incidental log service field.
     for prefix,logical in (("account_","account_service"),("analytics_","analytics_platform"),
         ("search_","search_service"),("support_","support_platform"),("export_","export_service"),
         ("data_flow_","integration_service"),("backup_","backup_service"),("cache_","cache_service"),
         ("audit_record_","security_service"),("tombstone_","identity_service")):
         if rid.startswith(prefix): return logical
+    explicit=norm(obj.get("system") or obj.get("data_store") or obj.get("system_id") or obj.get("source_system")) if isinstance(obj,dict) else ""
+    if explicit:
+        return {"support_replica":"support_platform","customer_data_read_replica":"database_replica",
+                "customer_data_reporting_replica":"database_replica"}.get(explicit,explicit)
     s=norm(path+" "+json.dumps(obj,ensure_ascii=False,default=str)[:900])
     for token,system in (("account","account_service"),("profile","profile_service"),
         ("search","search_service"),("analytics","analytics_platform"),("support","support_platform"),
