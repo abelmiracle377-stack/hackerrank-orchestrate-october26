@@ -304,7 +304,7 @@ def has_direct_pii(payload: Any) -> bool:
             return any(visit(item) for item in value)
         elif isinstance(value,str):
             for key in keys:
-                if re.search(r"\\b"+re.escape(key)+r"\\s*[=:]\\s*(?!null\\b|none\\b|['\\\"]?null)",value,re.I):
+                if re.search(r"\b"+re.escape(key)+r"\s*[=:]\s*(?!null\b|none\b|['\"]?null)",value,re.I):
                     return True
         return False
     return visit(payload)
@@ -317,7 +317,7 @@ def has_stable_user_link(payload: Any) -> bool:
                        or visit(item) for k,item in value.items())
         if isinstance(value,(list,tuple)): return any(visit(item) for item in value)
         if isinstance(value,str):
-            return any(re.search(r"\\b"+k+r"\\s*[=:]\\s*(?!null\\b|none\\b|['\\\"]?null)",value,re.I)
+            return any(re.search(r"\b"+k+r"\s*[=:]\s*(?!null\b|none\b|['\"]?null)",value,re.I)
                        for k in keys)
         return False
     return visit(payload)
