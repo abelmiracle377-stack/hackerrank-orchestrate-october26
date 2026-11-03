@@ -271,12 +271,24 @@ def matches_alias(payload: Any, aliases: set[str]) -> bool:
     return any(a and a in text for a in aliases)
 
 def relevant(records, aliases, audit_at):
-    cutoff=when(audit_at); found=[]
+    """Resolve resource identity across all evidence, but evaluate state at audit_at."""
+    cutoff=when(audit_at)
+    linked={(r.system,r.resource) for r in records if aliases.intersection(r.search_values)}
+    candidates=[]
     for r in records:
         ts=when(r.captured)
         if cutoff and ts and ts>cutoff: continue
-        if aliases.intersection(r.search_values): found.append(r)
-    return found
+        if aliases.intersection(r.search_values) or (r.system,r.resource) in linked:
+            candidates.append(r)
+    # Keep the freshest available point-in-time observation per resource.
+    latest={}
+    for r in candidates:
+        key=(r.system,r.resource)
+        current=latest.get(key)
+        rt=when(r.captured); ct=when(current.captured) if current else None
+        if current is None or (rt and (ct is None or rt>ct)):
+            latest[key]=r
+    return list(latest.values())
 
 def plan(found: list[Evidence]) -> list[Step]:
     out=[]; seen=set()
