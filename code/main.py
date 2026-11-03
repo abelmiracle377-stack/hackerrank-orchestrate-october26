@@ -30,7 +30,7 @@ class Evidence:
     captured: str
     payload: Any
     category: str
-    search_text: str
+    search_values: set[str]
 
 @dataclass
 class Step:
@@ -130,6 +130,24 @@ def walk(x: Any, inherited: Mapping[str,Any]|None=None):
     elif isinstance(x,list):
         for v in x: yield from walk(v,inherited)
 
+def evidence_values(value: Any) -> set[str]:
+    """Extract exact scalar identifiers; never use substring identity matching."""
+    found=set()
+    if isinstance(value,dict):
+        for item in value.values(): found.update(evidence_values(item))
+    elif isinstance(value,(list,tuple,set)):
+        for item in value: found.update(evidence_values(item))
+    elif value is not None:
+        raw=str(value).strip()
+        if raw: found.add(norm(raw))
+        # Log lines embed identifiers inside key=value text. Extract only complete values.
+        for pattern in (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+                        r"\\buser_\\d+\\b",r"\\b[a-fA-F0-9]{64}\\b"):
+            for match in re.findall(pattern,raw,re.I): found.add(norm(match))
+        kv=r"(?:lookup_key|customer_reference|subject_reference|user_id|email|customer_email|owner_email|requester_email|email_hash|phone|full_name|requester_name)\\s*[=:]\\s*['\\\"]?([^,\\s'\\\"]+)"
+        for match in re.findall(kv,raw,re.I): found.add(norm(match))
+    return found
+
 def evidence_records():
     records=[]
     for m in csv_rows(DATA/"evidence_files.csv"):
@@ -168,7 +186,7 @@ def evidence_records():
                 system=infer_system(rel,obj)
                 records.append(Evidence(m.get("file_id",""),rel,system,str(resource),
                     str(obj.get("captured_at") or obj.get("event_time") or obj.get("recorded_at") or m.get("captured_at","")),
-                    obj,infer_category(rel,system,obj),norm(json.dumps(obj,ensure_ascii=False,default=str))))
+                    obj,infer_category(rel,system,obj),evidence_values(obj)))
         except (OSError,ValueError,TypeError,csv.Error):
             continue
     return records
@@ -191,7 +209,7 @@ def relevant(records, aliases, audit_at):
     for r in records:
         ts=when(r.captured)
         if cutoff and ts and ts>cutoff: continue
-        if any(a and a in r.search_text for a in aliases): found.append(r)
+        if aliases.intersection(r.search_values): found.append(r)
     return found
 
 def plan(found: list[Evidence]) -> list[Step]:
