@@ -2,14 +2,16 @@
 
 ## Run locally
 
-Requires Python 3.11+ and only the standard library.
+Requires Python 3.11+, the packages in `code/requirements.txt`, and Tesseract OCR for scanned documents/images. The runner can still execute without OCR dependencies, but those evidence types will be skipped.
 
 ```bash
+python -m pip install -r code/requirements.txt
+# Install tesseract-ocr with your operating system package manager
 python code/main.py
 python code/evaluation/main.py --predicted output.csv --expected dataset/sample_output.csv
 ```
 
-The runner creates `output.csv` at the repository root. It resolves identities from the current identity table and historical audit log, inspects manifest-listed machine-readable evidence, and emits the required ordered JSON steps. Image and PDF evidence are not OCR'd by this deterministic runner; review those evidence items separately before treating a result as final.
+The runner creates `output.csv` at the repository root. It resolves identities from the current identity table and historical audit log, inspects manifest-listed machine-readable evidence, and emits the required ordered JSON steps. PDF text is extracted with pypdf; scanned PDFs use PyMuPDF rendering plus Tesseract OCR. Image evidence uses Pillow and Tesseract. OCR output is treated as evidence text and must still be checked against the source when it affects a decision.
 
 ## Validation
 
