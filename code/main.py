@@ -242,6 +242,14 @@ def evidence_records():
                 resource=obj.get("resource_id") or obj.get("record_id") or obj.get("id")
                 if not resource: continue
                 system=infer_system(rel,obj)
+                if system=="evidence_store":
+                    origin=norm(m.get("origin"))
+                    origin_map={"support_platform":"support_platform","analytics_platform":"analytics_platform",
+                      "identity_service":"identity_service","backup_service":"backup_service",
+                      "export_service":"export_service","search_index_service":"search_service",
+                      "account_history_service":"account_service","security_service":"security_service",
+                      "customer_account_service":"account_service","customer_export_service":"export_service"}
+                    system=origin_map.get(origin,infer_system(rel,origin))
                 records.append(Evidence(m.get("file_id",""),rel,system,str(resource),
                     str(m.get("captured_at","")),
                     obj,infer_category(rel,system,obj),evidence_values(obj)))
